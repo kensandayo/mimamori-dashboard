@@ -13,6 +13,10 @@ validation.py
 - 緯度経度が欠損していないか
 """
 
+from __future__ import annotations
+
+from typing import List, Tuple
+
 import pandas as pd
 
 from utils.config import (
@@ -20,7 +24,7 @@ from utils.config import (
 )
 
 
-def validate_dataframe(df: pd.DataFrame):
+def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     """
     DataFrameを検証し、(is_valid: bool, errors: list[str]) を返します。
     エラーがあってもここでは例外を投げず、エラー一覧を返すだけにしています。

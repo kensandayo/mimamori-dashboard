@@ -3,87 +3,66 @@
 app.py
 --------
 アプリのエントリーポイントです。
-Streamlitのマルチページアプリでは、このファイルが最初に表示される
-「①ダッシュボード」画面を兼ねています。
 
-他のページ（地域マップ、ランキングなど）は pages/ フォルダの中にあり、
-画面左のサイドバーから切り替えられます。
+【文字化け対策について】
+以前はpages/フォルダ内のファイル名に日本語・絵文字を使っており、
+実行環境（OSの文字コード設定など）によってサイドバーのメニュー表示が
+文字化けすることがありました。
+
+このファイルでは st.navigation() / st.Page() を使い、
+- ページファイル名はすべて英数字（dashboard.py, map.py など）
+- サイドバーに表示される日本語タイトルは、このファイル内の
+  Pythonの文字列（UTF-8で保存されたソースコード）として直接指定
+という構成にすることで、文字化けの原因を構造的に排除しています。
 """
+
+from __future__ import annotations
+
+from pathlib import Path
 
 import streamlit as st
 
-from utils.config import APP_TITLE, COL_SCORE, COL_PRIORITY, COL_AGING, COL_SINGLE_ELDERLY, PRIORITY_HIGH
-from utils.state import init_state, get_scored_data, get_data_source_info
-from components.header import render_header, render_footer
+from utils.config import APP_TITLE, APP_VERSION
+from utils.state import init_state
+from components.style import inject_global_css
 
 # ページ全体の基本設定（タイトル・レイアウト・アイコン）
+# st.set_page_config はスクリプト全体で最初に一度だけ呼び出す必要があります。
 st.set_page_config(
     page_title=APP_TITLE,
     page_icon="🏘️",
     layout="wide",
 )
 
-# session_stateの初期化（サンプルデータ・重みの初期値をセット）
+# 全画面共通のCSS（青・白・グレー基調のデザイン）を注入
+inject_global_css()
+
+# session_stateの初期化（標準データ・重みの初期値をセット）
 init_state()
 
-st.title(f"🏘️ {APP_TITLE}")
-render_header()
+# pages/ フォルダ内の各画面を、日本語タイトル・アイコン付きでナビゲーションに登録
+PAGES_DIR = Path(__file__).resolve().parent / "pages"
 
-# 現在のデータにスコアを計算して取得
-scored_df = get_scored_data()
-source_info = get_data_source_info()
+pages = [
+    st.Page(str(PAGES_DIR / "1_dashboard.py"), title="ダッシュボード", icon="🏠", default=True),
+    st.Page(str(PAGES_DIR / "2_priority_map.py"), title="地域マップ", icon="🗺️"),
+    st.Page(str(PAGES_DIR / "3_ranking.py"), title="ランキング", icon="📊"),
+    st.Page(str(PAGES_DIR / "4_comparison.py"), title="比較", icon="📈"),
+    st.Page(str(PAGES_DIR / "5_district_report.py"), title="地区詳細", icon="📋"),
+    st.Page(str(PAGES_DIR / "6_simulation.py"), title="シミュレーション", icon="🔮"),
+    st.Page(str(PAGES_DIR / "7_data_management.py"), title="設定・データ管理", icon="⚙️"),
+]
 
-st.markdown("### 📊 ダッシュボード")
-st.caption("市内全地区の現状を一目で確認できます。")
+navigation = st.navigation(pages)
 
-# ------------------------------------------------------------
-# カード形式のサマリー表示
-# ------------------------------------------------------------
-n_districts = len(scored_df)
-avg_score = scored_df[COL_SCORE].mean()
-n_high_priority = (scored_df[COL_PRIORITY] == PRIORITY_HIGH).sum()
-avg_aging = scored_df[COL_AGING].mean()
-avg_single_elderly = scored_df[COL_SINGLE_ELDERLY].mean()
+# サイドバー最上部にアプリ名を表示
+with st.sidebar:
+    st.markdown(f"### 🏘️ {APP_TITLE}")
+    st.caption("地区単位の見守り意思決定支援ツール")
+    st.markdown("---")
 
-card_style = """
-<div style="background-color:white; border:1px solid #dbe3ec; border-radius:10px;
-            padding:16px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-    <div style="font-size:13px; color:#556; margin-bottom:6px;">{label}</div>
-    <div style="font-size:26px; font-weight:700; color:#1d3557;">{value}</div>
-</div>
-"""
+navigation.run()
 
-row1 = st.columns(3)
-with row1[0]:
-    st.markdown(card_style.format(label="地区数", value=f"{n_districts} 地区"), unsafe_allow_html=True)
-with row1[1]:
-    st.markdown(card_style.format(label="平均優先度スコア", value=f"{avg_score:.1f} 点"), unsafe_allow_html=True)
-with row1[2]:
-    st.markdown(card_style.format(label="優先度「高」の地区数", value=f"{n_high_priority} 地区"), unsafe_allow_html=True)
-
-st.write("")
-row2 = st.columns(3)
-with row2[0]:
-    st.markdown(card_style.format(label="平均高齢化率", value=f"{avg_aging:.1f} %"), unsafe_allow_html=True)
-with row2[1]:
-    st.markdown(card_style.format(label="平均単身高齢者割合", value=f"{avg_single_elderly:.1f} %"), unsafe_allow_html=True)
-with row2[2]:
-    st.markdown(card_style.format(label="データ更新日時", value=source_info["updated_at"]), unsafe_allow_html=True)
-
-st.caption(f"データ出典: {source_info['source_name']}")
-
-st.write("")
-st.info(
-    "左側のメニューから「地域マップ」「ランキング」「比較」「地区レポート」"
-    "「シミュレーション」「設定・データ管理」の各画面に移動できます。",
-    icon="👈",
-)
-
-# ------------------------------------------------------------
-# 優先度上位地区の簡易プレビュー
-# ------------------------------------------------------------
-st.markdown("### ⚠️ 優先度が高い地区（上位5地区）")
-top5 = scored_df.sort_values("順位").head(5)[["順位", "地区名", "総合スコア", "優先度"]]
-st.dataframe(top5, use_container_width=True, hide_index=True)
-
-render_footer()
+with st.sidebar:
+    st.markdown("---")
+    st.caption(f"バージョン: {APP_VERSION}")

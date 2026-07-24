@@ -9,22 +9,36 @@ scoring.py
 - 医療アクセス・公共交通は「高いほどリスクが低い」指標なので自動的に反転して計算する
 - 各指標を重み付けして合計し、0〜100点のスコアにする
 
+このモジュールが提供する主な機能:
+- calculate_scores()          : 全地区のスコア・順位・優先度を計算
+- get_contribution_breakdown(): 1地区のスコア内訳（各指標が何点効いているか）
+- get_indicator_diffs()       : 1地区の各指標と市平均との差
+- generate_analysis_comments():「自動分析コメント」の文章を生成（AIによる判定ではなく、ルールベースの機械的な差分説明）
+- generate_recommendations()  : ルールベースで「推奨される対応例」を生成
+- get_city_average()          : 全地区の指標平均値
+
 【将来の拡張方法】
-新しい指標を追加する場合は、config.py の INDICATORS に情報を追加したうえで、
-calculate_scores() 内の risk_direction の分岐処理がそのまま使えるように
-DataFrameに新しい列を用意すれば動作します（計算式自体は共通化されています）。
+新しい指標を追加する場合は、config.py の INDICATORS に情報を追加すれば、
+このファイルの計算処理（risk_directionによる自動反転を含む）はそのまま使えます。
 """
+
+from __future__ import annotations
+
+from typing import Dict, List
 
 import pandas as pd
 
 from utils.config import (
     INDICATORS, COL_SCORE, COL_RANK, COL_PRIORITY,
+    COL_AGING, COL_SINGLE_ELDERLY, COL_MEDICAL, COL_TRANSPORT,
     PRIORITY_HIGH, PRIORITY_MID, PRIORITY_LOW,
     PRIORITY_HIGH_QUANTILE, PRIORITY_LOW_QUANTILE,
 )
 
+Weights = Dict[str, float]
 
-def _risk_value(row, indicator):
+
+def _risk_value(row: pd.Series, indicator: dict) -> float:
     """
     指標の「リスク値」を返します。
     risk_direction が negative の指標（医療アクセス・公共交通など）は
@@ -36,7 +50,7 @@ def _risk_value(row, indicator):
     return raw
 
 
-def calculate_scores(df: pd.DataFrame, weights: dict) -> pd.DataFrame:
+def calculate_scores(df: pd.DataFrame, weights: Weights) -> pd.DataFrame:
     """
     各地区の総合スコア・順位・優先度・各指標の寄与点を計算して
     列を追加したDataFrameを返します。
@@ -59,31 +73,36 @@ def calculate_scores(df: pd.DataFrame, weights: dict) -> pd.DataFrame:
 
     # 総合スコア = 各指標の寄与点の合計
     result[COL_SCORE] = result[contribution_cols].sum(axis=1).round(1)
+    result = result.drop(columns=contribution_cols)
 
     # 順位（スコアが高い＝ニーズが高い地区を1位とする）
     result[COL_RANK] = result[COL_SCORE].rank(ascending=False, method="min").astype(int)
     result = result.sort_values(COL_RANK).reset_index(drop=True)
 
     # 優先度（上位25% = 高、下位25% = 低、それ以外 = 中）
-    high_th = result[COL_SCORE].quantile(PRIORITY_HIGH_QUANTILE)
-    low_th = result[COL_SCORE].quantile(PRIORITY_LOW_QUANTILE)
-
-    def classify(score):
-        if score >= high_th:
-            return PRIORITY_HIGH
-        elif score <= low_th:
-            return PRIORITY_LOW
-        else:
-            return PRIORITY_MID
-
-    result[COL_PRIORITY] = result[COL_SCORE].apply(classify)
+    result[COL_PRIORITY] = _classify_priority(result[COL_SCORE])
 
     return result
 
 
-def get_contribution_breakdown(row: pd.Series, weights: dict) -> list:
+def _classify_priority(scores: pd.Series) -> pd.Series:
+    """スコアの分布から優先度（高・中・低）を相対的に分類します。"""
+    high_th = scores.quantile(PRIORITY_HIGH_QUANTILE)
+    low_th = scores.quantile(PRIORITY_LOW_QUANTILE)
+
+    def classify(score: float) -> str:
+        if score >= high_th:
+            return PRIORITY_HIGH
+        if score <= low_th:
+            return PRIORITY_LOW
+        return PRIORITY_MID
+
+    return scores.apply(classify)
+
+
+def get_contribution_breakdown(row: pd.Series, weights: Weights) -> List[dict]:
     """
-    1地区分の行から、各指標の寄与点の内訳をリストで返します。
+    1地区分の行から、各指標の寄与点の内訳をリストで返します（寄与が大きい順）。
     [{"label": "高齢化率", "contribution": 12.3, "raw_value": 41.0, "unit": "%"}, ...]
     """
     breakdown = []
@@ -97,19 +116,39 @@ def get_contribution_breakdown(row: pd.Series, weights: dict) -> list:
             "unit": indicator["unit"],
             "risk_direction": indicator["risk_direction"],
         })
-    # 寄与点が大きい順に並び替え（＝そのスコアに最も効いている指標が先頭に来る）
     breakdown.sort(key=lambda x: x["contribution"], reverse=True)
     return breakdown
 
 
-def generate_reasons(row: pd.Series, df: pd.DataFrame, threshold: float = 3.0) -> list:
+def get_indicator_diffs(row: pd.Series, df: pd.DataFrame) -> List[dict]:
     """
-    「なぜこの順位・優先度になったのか」を説明する文章のリストを生成します。
-    市平均との差が threshold ポイント以上ある指標について理由文を作ります。
+    1地区の各指標の値と、市平均との差を一覧で返します（地区レポートの「平均との差」表示用）。
+    [{"label": "高齢化率", "value": 41.0, "avg": 33.2, "diff": 7.8, "unit": "%"}, ...]
+    """
+    diffs = []
+    for indicator in INDICATORS:
+        col = indicator["key"]
+        avg = df[col].mean()
+        diffs.append({
+            "label": indicator["label"],
+            "value": row[col],
+            "avg": avg,
+            "diff": row[col] - avg,
+            "unit": indicator["unit"],
+            "risk_direction": indicator["risk_direction"],
+        })
+    return diffs
+
+
+def generate_analysis_comments(row: pd.Series, df: pd.DataFrame, threshold: float = 3.0) -> List[str]:
+    """
+    「自動分析コメント」の文章を生成します。
+    市平均との差が threshold ポイント以上ある指標について、機械的に文章を組み立てます。
+    ※ AIによる判定ではなく、あらかじめ決めたルールに基づく差分説明です。
 
     例: "高齢化率が市平均より7.2ポイント高い"
     """
-    reasons = []
+    comments = []
     for indicator in INDICATORS:
         col = indicator["key"]
         avg = df[col].mean()
@@ -118,26 +157,27 @@ def generate_reasons(row: pd.Series, df: pd.DataFrame, threshold: float = 3.0) -
         if indicator["risk_direction"] == "positive":
             # 高いほどリスクが高い指標 → 平均より高ければニーズが高い理由になる
             if diff >= threshold:
-                reasons.append(f"{indicator['label']}が市平均より{diff:.1f}ポイント高い")
+                comments.append(f"{indicator['label']}が市平均より{diff:.1f}ポイント高い")
             elif diff <= -threshold:
-                reasons.append(f"{indicator['label']}は市平均より{abs(diff):.1f}ポイント低く、良好")
+                comments.append(f"{indicator['label']}は市平均より{abs(diff):.1f}ポイント低く、良好")
         else:
             # 高いほどリスクが低い指標 → 平均より低ければニーズが高い理由になる
             if diff <= -threshold:
-                reasons.append(f"{indicator['label']}が市平均より{abs(diff):.1f}ポイント低い（アクセスが弱い）")
+                comments.append(f"{indicator['label']}が市平均より{abs(diff):.1f}ポイント低い（アクセスが弱い）")
             elif diff >= threshold:
-                reasons.append(f"{indicator['label']}は市平均より{diff:.1f}ポイント高く、良好")
+                comments.append(f"{indicator['label']}は市平均より{diff:.1f}ポイント高く、良好")
 
-    if not reasons:
-        reasons.append("各指標がおおむね市平均並みであり、突出した要因は見られません。")
+    if not comments:
+        comments.append("各指標がおおむね市平均並みであり、突出した要因は見られません。")
 
-    return reasons
+    return comments
 
 
-def generate_recommendations(row: pd.Series, df: pd.DataFrame, weights: dict) -> list:
+def generate_recommendations(row: pd.Series, df: pd.DataFrame, weights: Weights) -> List[str]:
     """
-    ルールベースで推奨施策のリストを生成します。
-    スコアへの寄与が大きい指標に応じて、対応する施策を提示します。
+    ルールベースで「推奨される対応例」のリストを生成します。
+    スコアへの寄与が大きい指標に応じて、対応する施策例を提示します。
+    ※ あくまで参考例であり、最終判断は自治体職員が行ってください。
     """
     breakdown = get_contribution_breakdown(row, weights)
     top_factors = [b["label"] for b in breakdown[:2] if b["contribution"] > 0]
@@ -145,35 +185,43 @@ def generate_recommendations(row: pd.Series, df: pd.DataFrame, weights: dict) ->
     recommendations = []
 
     if "高齢化率" in top_factors or "単身高齢者割合" in top_factors:
-        recommendations.append("地域包括支援センターとの連携強化")
-        recommendations.append("見守りイベント・声かけ活動の開催")
-        recommendations.append("民生委員による重点訪問の実施")
+        recommendations += [
+            "地域包括支援センターとの連携強化",
+            "見守りイベント・声かけ活動の開催",
+            "民生委員による重点訪問の実施",
+        ]
 
     if "医療アクセス" in top_factors:
-        recommendations.append("巡回診療・オンライン診療の導入検討")
-        recommendations.append("通院支援（送迎サービス）の整備")
+        recommendations += [
+            "巡回診療・オンライン診療の導入検討",
+            "通院支援（送迎サービス）の整備",
+        ]
 
     if "公共交通" in top_factors:
-        recommendations.append("デマンド型交通・コミュニティバスの導入検討")
-        recommendations.append("移動販売・買い物支援サービスの誘致")
+        recommendations += [
+            "デマンド型交通・コミュニティバスの導入検討",
+            "移動販売・買い物支援サービスの誘致",
+        ]
 
     # どの地区にも共通して提示する基本施策
     recommendations.append("地域ボランティア・見守り協力員の募集")
 
-    # 重複を除きつつ順序を保持
-    seen = set()
-    unique_recommendations = []
-    for r in recommendations:
-        if r not in seen:
-            unique_recommendations.append(r)
-            seen.add(r)
+    return _unique_preserve_order(recommendations)
 
-    return unique_recommendations
+
+def _unique_preserve_order(items: List[str]) -> List[str]:
+    """リストの順序を保ったまま重複を除きます。"""
+    seen = set()
+    result = []
+    for item in items:
+        if item not in seen:
+            result.append(item)
+            seen.add(item)
+    return result
 
 
 def get_city_average(df: pd.DataFrame) -> pd.Series:
-    """全地区の指標平均値を返します（比較機能で使用）。"""
-    from utils.config import COL_AGING, COL_SINGLE_ELDERLY, COL_MEDICAL, COL_TRANSPORT
-    cols = [COL_AGING, COL_SINGLE_ELDERLY, COL_MEDICAL, COL_TRANSPORT, "総合スコア"]
+    """全地区の指標平均値（総合スコアを含む）を返します（比較機能などで使用）。"""
+    cols = [COL_AGING, COL_SINGLE_ELDERLY, COL_MEDICAL, COL_TRANSPORT, COL_SCORE]
     cols = [c for c in cols if c in df.columns]
     return df[cols].mean()
