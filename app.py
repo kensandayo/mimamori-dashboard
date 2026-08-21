@@ -20,11 +20,11 @@ import streamlit as st
 from utils.config import APP_TITLE, APP_VERSION
 from utils.state import init_state, get_current_pattern_name, apply_pattern
 from utils.patterns import list_pattern_names
-from components.style import inject_global_css, inject_compact_desktop_css
+from components.style import inject_global_css, inject_interview_scale_css
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🏘️", layout="wide")
 inject_global_css()
-inject_compact_desktop_css()
+inject_interview_scale_css()
 init_state()
 
 PAGES_DIR = Path(__file__).resolve().parent / "pages"

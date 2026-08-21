@@ -58,62 +58,58 @@ def inject_global_css() -> None:
         unsafe_allow_html=True,
     )
 
-def inject_compact_desktop_css() -> None:
-    """100%表示でも情報が収まりやすい、少し引き気味のデスクトップUI。"""
+def inject_interview_scale_css() -> None:
+    """
+    ヒアリング用UI。
+    ブラウザの表示倍率100%のまま、Streamlitアプリ本体を80%へ縮小表示する。
+    transformを使うため、CSS zoomよりブラウザ差の影響を受けにくい。
+    """
     st.markdown(
         """
         <style>
-        .block-container {
-            max-width: 1600px !important;
-            padding-top: 1.0rem !important;
-            padding-left: 1.25rem !important;
-            padding-right: 1.25rem !important;
-            padding-bottom: 1.5rem !important;
+        /* Streamlitアプリ本体を80%に縮小 */
+        [data-testid="stAppViewContainer"] {
+            transform: scale(0.80);
+            transform-origin: top left;
+            width: 125% !important;
+            min-height: 125vh !important;
         }
 
-        h1 { font-size: 1.85rem !important; line-height: 1.25 !important; }
-        h2 { font-size: 1.55rem !important; line-height: 1.30 !important; }
-        h3 { font-size: 1.20rem !important; line-height: 1.30 !important; }
+        /* メイン領域を横に広く使う */
+        .block-container {
+            max-width: 1900px !important;
+            padding-top: 0.8rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            padding-bottom: 1.2rem !important;
+        }
 
+        /* 評価カードの省略を減らす */
         [data-testid="stMetric"] {
-            padding: 0.50rem 0.55rem !important;
             min-width: 0 !important;
         }
+
         [data-testid="stMetricLabel"] p {
-            font-size: 0.76rem !important;
             white-space: normal !important;
             overflow: visible !important;
             text-overflow: clip !important;
-            line-height: 1.12 !important;
+            line-height: 1.15 !important;
         }
+
         [data-testid="stMetricValue"] {
-            font-size: 1.48rem !important;
-            line-height: 1.12 !important;
-        }
-        [data-testid="stMetricDelta"] {
-            font-size: 0.76rem !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
         }
 
+        /* 横並びカード間の余白を少しだけ縮小 */
         [data-testid="stHorizontalBlock"] {
-            gap: 0.55rem !important;
+            gap: 0.7rem !important;
         }
 
+        /* サイドバーも少し細め */
         [data-testid="stSidebar"] {
-            min-width: 240px !important;
-            max-width: 280px !important;
-        }
-
-        [data-testid="stDataFrame"] {
-            font-size: 0.90rem !important;
-        }
-
-        @media (max-width: 1100px) {
-            .block-container {
-                padding-left: 0.75rem !important;
-                padding-right: 0.75rem !important;
-            }
-            [data-testid="stMetricValue"] { font-size: 1.30rem !important; }
-            [data-testid="stMetricLabel"] p { font-size: 0.70rem !important; }
+            min-width: 245px !important;
+            max-width: 270px !important;
         }
         </style>
         """,
