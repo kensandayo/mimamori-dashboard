@@ -57,3 +57,66 @@ def inject_global_css() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+def inject_compact_desktop_css() -> None:
+    """100%表示でも情報が収まりやすい、少し引き気味のデスクトップUI。"""
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 1600px !important;
+            padding-top: 1.0rem !important;
+            padding-left: 1.25rem !important;
+            padding-right: 1.25rem !important;
+            padding-bottom: 1.5rem !important;
+        }
+
+        h1 { font-size: 1.85rem !important; line-height: 1.25 !important; }
+        h2 { font-size: 1.55rem !important; line-height: 1.30 !important; }
+        h3 { font-size: 1.20rem !important; line-height: 1.30 !important; }
+
+        [data-testid="stMetric"] {
+            padding: 0.50rem 0.55rem !important;
+            min-width: 0 !important;
+        }
+        [data-testid="stMetricLabel"] p {
+            font-size: 0.76rem !important;
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            line-height: 1.12 !important;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 1.48rem !important;
+            line-height: 1.12 !important;
+        }
+        [data-testid="stMetricDelta"] {
+            font-size: 0.76rem !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            gap: 0.55rem !important;
+        }
+
+        [data-testid="stSidebar"] {
+            min-width: 240px !important;
+            max-width: 280px !important;
+        }
+
+        [data-testid="stDataFrame"] {
+            font-size: 0.90rem !important;
+        }
+
+        @media (max-width: 1100px) {
+            .block-container {
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+            }
+            [data-testid="stMetricValue"] { font-size: 1.30rem !important; }
+            [data-testid="stMetricLabel"] p { font-size: 0.70rem !important; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
