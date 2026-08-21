@@ -2,13 +2,8 @@
 """
 header.py
 -----------
-どのページを開いても必ず表示される
-「システムの目的の説明バナー」と「フッター（限界事項）」を提供します。
-
-自治体向けシステムでは、
-「これは何をするシステムで、何をしないシステムか」
-を毎画面で明示することが誤解防止の観点から重要なため、
-共通コンポーネント化しています。
+どのページを開いても必ず表示される「システムの目的の説明バナー」と
+「フッター（限界事項）」を提供する共通コンポーネントです。
 """
 
 from __future__ import annotations
@@ -22,7 +17,6 @@ from utils.config import (
 
 
 def render_header(page_title: str = "", page_caption: str = "") -> None:
-    """ページ上部の共通ヘッダー（説明バナー＋任意でページタイトル）を表示します。"""
     st.markdown(
         f"""
         <div style="background-color:{COLOR_ACCENT_BG}; border-left:6px solid {COLOR_PRIMARY};
@@ -41,7 +35,6 @@ def render_header(page_title: str = "", page_caption: str = "") -> None:
 
 
 def render_footer() -> None:
-    """ページ下部の共通フッター（本システムの限界・注意事項）を表示します。"""
     st.markdown("---")
     items_html = "".join([f"<li>{item}</li>" for item in SYSTEM_LIMITATIONS])
     st.markdown(

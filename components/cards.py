@@ -2,11 +2,7 @@
 """
 cards.py
 ----------
-ダッシュボードや地区詳細画面で使う「カード形式の指標表示」を
-共通化したコンポーネントです。
-
-以前はページごとにHTML文字列を個別に組み立てていましたが、
-デザインの一貫性と保守性を高めるためにここへ集約しています。
+ダッシュボードや地区詳細画面で使う「カード形式の指標表示」を共通化したコンポーネントです。
 """
 
 from __future__ import annotations
@@ -36,10 +32,6 @@ _CARD_TEMPLATE = """
 
 
 def render_metric_cards(cards: List[CardData], columns: Optional[int] = None) -> None:
-    """
-    カード形式で指標を横並び表示します。
-    cards: [{"label": "地区数", "value": "12 地区", "caption": "任意の補足"}, ...]
-    """
     n = columns or len(cards)
     cols = st.columns(n)
     for col, card in zip(cols, cards):
@@ -49,19 +41,14 @@ def render_metric_cards(cards: List[CardData], columns: Optional[int] = None) ->
         with col:
             st.markdown(
                 _CARD_TEMPLATE.format(
-                    border=COLOR_BORDER,
-                    sub=COLOR_TEXT_SUB,
-                    primary=COLOR_PRIMARY_DARK,
-                    label=card["label"],
-                    value=card["value"],
-                    caption_html=caption_html,
+                    border=COLOR_BORDER, sub=COLOR_TEXT_SUB, primary=COLOR_PRIMARY_DARK,
+                    label=card["label"], value=card["value"], caption_html=caption_html,
                 ),
                 unsafe_allow_html=True,
             )
 
 
 def render_info_strip(items: List[CardData]) -> None:
-    """データ出典・対象年度・更新日など、小さな情報チップを横並びで表示します。"""
     cols = st.columns(len(items))
     for col, item in zip(cols, items):
         with col:

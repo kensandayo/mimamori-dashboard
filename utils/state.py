@@ -2,16 +2,13 @@
 """
 state.py
 ----------
-st.session_state（ページをまたいで保持される状態）の初期化を
-一箇所にまとめるモジュールです。
+st.session_state（ページをまたいで保持される状態）の初期化を一箇所にまとめるモジュールです。
 
-Streamlitはページごとにスクリプトが再実行されるため、
-「元データ」「重み設定」などはすべてsession_stateに保存し、
-どのページからでも同じ関数を呼べば初期化・取得できるようにしています。
-
-標準データは data/sample_data.csv（config.DEFAULT_CSV_PATH）です。
-アプリ起動時に一度だけ読み込み、以後はCSVアップロードや画面編集で
-session_state上のデータを差し替えます（元のCSVファイル自体は変更しません）。
+【v8での変更点】
+重みは以前は4項目固定の辞書でしたが、今後は評価項目数が可変なため、
+parameter_loader.get_default_weights() から動的に初期値を組み立てます。
+また「現在どの評価パターンを使っているか」も session_state で管理し、
+パターンを切り替えると全画面のスコアが自動的に再計算されます。
 """
 
 from __future__ import annotations
@@ -21,13 +18,16 @@ from typing import Dict, Optional
 import pandas as pd
 import streamlit as st
 
-from utils.config import DEFAULT_WEIGHTS, DATA_SOURCE_NAME, DATA_TARGET_YEAR, DATA_UPDATED_AT
+from utils.config import DATA_SOURCE_NAME, DATA_TARGET_YEAR, DATA_UPDATED_AT
 from utils.data_loader import load_default_data
+from utils.parameter_loader import get_default_weights
 from utils.scoring import calculate_scores
+from utils.patterns import get_pattern
 
 RAW_DATA_KEY = "raw_data"
 WEIGHTS_KEY = "weights"
 DATA_SOURCE_INFO_KEY = "data_source_info"
+CURRENT_PATTERN_KEY = "current_pattern_name"
 
 Weights = Dict[str, float]
 
@@ -38,7 +38,10 @@ def init_state() -> None:
         st.session_state[RAW_DATA_KEY] = load_default_data()
 
     if WEIGHTS_KEY not in st.session_state:
-        st.session_state[WEIGHTS_KEY] = dict(DEFAULT_WEIGHTS)
+        st.session_state[WEIGHTS_KEY] = get_default_weights()
+
+    if CURRENT_PATTERN_KEY not in st.session_state:
+        st.session_state[CURRENT_PATTERN_KEY] = "標準"
 
     if DATA_SOURCE_INFO_KEY not in st.session_state:
         st.session_state[DATA_SOURCE_INFO_KEY] = {
@@ -59,7 +62,6 @@ def set_raw_data(
     updated_at: Optional[str] = None,
     target_year: Optional[str] = None,
 ) -> None:
-    """データを更新します（CSVアップロードや画面編集の反映時に使用）。"""
     st.session_state[RAW_DATA_KEY] = df
     if source_name is not None or updated_at is not None or target_year is not None:
         info = dict(st.session_state.get(DATA_SOURCE_INFO_KEY, {}))
@@ -79,17 +81,40 @@ def get_weights() -> Weights:
 
 def set_weights(weights: Weights) -> None:
     st.session_state[WEIGHTS_KEY] = weights
+    # 重みを手動調整したら、以後は「カスタム」として扱う
+    st.session_state[CURRENT_PATTERN_KEY] = "カスタム"
+
+
+def get_current_pattern_name() -> str:
+    init_state()
+    return st.session_state[CURRENT_PATTERN_KEY]
+
+
+def apply_pattern(name: str) -> bool:
+    """
+    保存済みの評価パターンを現在の重みに適用します。
+    成功したらTrue、パターンが見つからなければFalseを返します。
+    """
+    pattern = get_pattern(name)
+    if pattern is None:
+        return False
+    st.session_state[WEIGHTS_KEY] = dict(pattern["weights"])
+    st.session_state[CURRENT_PATTERN_KEY] = name
+    return True
 
 
 def get_scored_data() -> pd.DataFrame:
-    """現在のデータと重みからスコア計算済みのDataFrameを取得します。"""
+    """
+    現在のデータと重みからスコア計算済みのDataFrameを取得します。
+    評価項目は毎回マスタから読み込むため、設定画面で項目を追加・削除すると
+    次にこの関数が呼ばれたときから自動的に反映されます。
+    """
     df = get_raw_data()
     weights = get_weights()
     return calculate_scores(df, weights)
 
 
 def get_data_source_info() -> dict:
-    """データ出典・対象年度・更新日を返します（ダッシュボード・設定画面で表示）。"""
     init_state()
     return st.session_state[DATA_SOURCE_INFO_KEY]
 

@@ -1,0 +1,38 @@
+{
+  "標準": {
+    "description": "各評価項目をバランス良く見る標準パターンです。",
+    "weights": {
+      "aging": 0.15,
+      "single_elderly": 0.15,
+      "medical": 0.15,
+      "mobility": 0.2,
+      "daily_supplies": 0.1,
+      "meal_service": 0.1,
+      "emergency_alert": 0.15
+    }
+  },
+  "移動重視": {
+    "description": "移動系（公共交通・通院/買い物の移動手段など）の課題を重視するパターンです。",
+    "weights": {
+      "aging": 0.1,
+      "single_elderly": 0.1,
+      "medical": 0.1,
+      "mobility": 0.4,
+      "daily_supplies": 0.1,
+      "meal_service": 0.1,
+      "emergency_alert": 0.1
+    }
+  },
+  "見守り重視": {
+    "description": "単身高齢者の孤立防止や緊急時対応など、見守りの側面を重視するパターンです。",
+    "weights": {
+      "aging": 0.15,
+      "single_elderly": 0.2,
+      "medical": 0.1,
+      "mobility": 0.1,
+      "daily_supplies": 0.1,
+      "meal_service": 0.1,
+      "emergency_alert": 0.25
+    }
+  }
+}

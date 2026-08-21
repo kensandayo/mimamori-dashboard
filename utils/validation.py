@@ -2,15 +2,11 @@
 """
 validation.py
 ---------------
-アップロードされたCSVや、画面上で編集されたデータに対して
-入力チェック（バリデーション）を行うモジュールです。
+アップロードされたCSVや、画面上で編集されたデータを検証するモジュールです。
 
-チェック内容:
-- 必須列が揃っているか
-- 数値であるべき列に数値以外が入っていないか
-- 欠損値がないか
-- 割合系の指標が0〜100%の範囲に収まっているか
-- 緯度経度が欠損していないか
+必須列・数値チェックの対象は、parameter_master.csv に登録されている
+評価項目から動的に決まります。指標を追加・削除しても、このファイルは
+変更する必要がありません。
 """
 
 from __future__ import annotations
@@ -19,41 +15,38 @@ from typing import List, Tuple
 
 import pandas as pd
 
-from utils.config import (
-    REQUIRED_COLUMNS, PERCENT_COLUMNS, COL_NAME, COL_LAT, COL_LON,
-)
+from utils.config import COL_NAME, COL_LAT, COL_LON
+from utils.parameter_loader import load_all_parameters, get_required_columns
 
 
 def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     """
-    DataFrameを検証し、(is_valid: bool, errors: list[str]) を返します。
-    エラーがあってもここでは例外を投げず、エラー一覧を返すだけにしています。
-    （画面側でまとめて分かりやすく表示するため）
+    DataFrameを検証し、(is_valid, errors) を返します。
     """
-    errors = []
+    errors: List[str] = []
 
     if df is None or df.empty:
         return False, ["データが空です。CSVファイルの内容を確認してください。"]
 
-    # 1. 必須列の存在チェック
-    missing_cols = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+    required_columns = get_required_columns()
+    missing_cols = [c for c in required_columns if c not in df.columns]
     if missing_cols:
         errors.append(f"必須列が不足しています: {', '.join(missing_cols)}")
-        # 必須列が無い時点でこれ以上の詳細チェックは意味がないため打ち切る
         return False, errors
 
-    # 2. 地区名の欠損チェック
     if df[COL_NAME].isna().any() or (df[COL_NAME].astype(str).str.strip() == "").any():
         errors.append("地区名が空欄の行があります。")
 
-    # 3. 地区名の重複チェック
     dup_names = df[COL_NAME][df[COL_NAME].duplicated()].unique().tolist()
     if dup_names:
         errors.append(f"地区名が重複しています: {', '.join(map(str, dup_names))}")
 
-    # 4. 数値列のチェック（数値変換できるか、欠損がないか）
-    numeric_cols = PERCENT_COLUMNS + [COL_LAT, COL_LON]
+    # 評価項目（マスタ登録済みの列）の数値チェック
+    param_columns = [p["key"] for p in load_all_parameters()]
+    numeric_cols = param_columns + [COL_LAT, COL_LON]
     for col in numeric_cols:
+        if col not in df.columns:
+            continue
         converted = pd.to_numeric(df[col], errors="coerce")
         non_numeric_rows = df[converted.isna() & df[col].notna()]
         if not non_numeric_rows.empty:
@@ -64,25 +57,28 @@ def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, List[str]]:
             errors.append(f"「{col}」に欠損値があります（該当行の地区名: "
                           f"{', '.join(map(str, missing_rows[COL_NAME].tolist()))}）。")
 
-    # 5. 割合系（%）指標が0〜100の範囲か
-    for col in PERCENT_COLUMNS:
+    # 評価項目（%・指数など0〜100想定の列）の範囲チェック
+    for col in param_columns:
+        if col not in df.columns:
+            continue
         converted = pd.to_numeric(df[col], errors="coerce")
         out_of_range = df[(converted < 0) | (converted > 100)]
         if not out_of_range.empty:
             errors.append(f"「{col}」が0〜100の範囲外の値になっています（該当行の地区名: "
                           f"{', '.join(map(str, out_of_range[COL_NAME].tolist()))}）。")
 
-    # 6. 緯度経度の妥当な範囲チェック（日本国内のおおまかな範囲）
-    lat_conv = pd.to_numeric(df[COL_LAT], errors="coerce")
-    lon_conv = pd.to_numeric(df[COL_LON], errors="coerce")
-    bad_lat = df[(lat_conv < 20) | (lat_conv > 46)]
-    bad_lon = df[(lon_conv < 122) | (lon_conv > 154)]
-    if not bad_lat.empty:
-        errors.append(f"「{COL_LAT}」が日本国内の範囲から外れている可能性があります（該当行の地区名: "
-                      f"{', '.join(map(str, bad_lat[COL_NAME].tolist()))}）。")
-    if not bad_lon.empty:
-        errors.append(f"「{COL_LON}」が日本国内の範囲から外れている可能性があります（該当行の地区名: "
-                      f"{', '.join(map(str, bad_lon[COL_NAME].tolist()))}）。")
+    # 緯度経度の妥当な範囲チェック（日本国内のおおまかな範囲）
+    if COL_LAT in df.columns and COL_LON in df.columns:
+        lat_conv = pd.to_numeric(df[COL_LAT], errors="coerce")
+        lon_conv = pd.to_numeric(df[COL_LON], errors="coerce")
+        bad_lat = df[(lat_conv < 20) | (lat_conv > 46)]
+        bad_lon = df[(lon_conv < 122) | (lon_conv > 154)]
+        if not bad_lat.empty:
+            errors.append(f"「{COL_LAT}」が日本国内の範囲から外れている可能性があります（該当行の地区名: "
+                          f"{', '.join(map(str, bad_lat[COL_NAME].tolist()))}）。")
+        if not bad_lon.empty:
+            errors.append(f"「{COL_LON}」が日本国内の範囲から外れている可能性があります（該当行の地区名: "
+                          f"{', '.join(map(str, bad_lon[COL_NAME].tolist()))}）。")
 
     is_valid = len(errors) == 0
     return is_valid, errors
