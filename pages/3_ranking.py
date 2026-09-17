@@ -2,7 +2,7 @@
 """
 ranking.py
 ------------
-全地区を一覧表示し、並び替え・検索・優先度フィルターができる画面です。
+全地区を一覧表示し、並び替え・検索・着目度フィルターができる画面です。
 指標の列・フィルターは、マスタに登録されている評価項目から動的に作られます。
 """
 
@@ -22,14 +22,14 @@ scored_df = get_scored_data()
 parameters = load_active_parameters()
 
 # ------------------------------------------------------------
-# フィルター（検索・優先度・評価項目の範囲は動的に生成）
+# フィルター（検索・着目度・評価項目の範囲は動的に生成）
 # ------------------------------------------------------------
 with st.expander("🔍 絞り込み条件", expanded=True):
     f1, f2 = st.columns(2)
     with f1:
         search_text = st.text_input("地区名で検索", "")
     with f2:
-        priority_filter = st.multiselect("優先度で絞り込み", options=["高", "中", "低"], default=["高", "中", "低"])
+        priority_filter = st.multiselect("着目度で絞り込み", options=["高", "中", "低"], default=["高", "中", "低"])
 
     range_filters = {}
     param_cols = st.columns(min(len(parameters), 4)) if parameters else []

@@ -37,8 +37,18 @@ def init_state() -> None:
     if RAW_DATA_KEY not in st.session_state:
         st.session_state[RAW_DATA_KEY] = load_default_data()
 
+    defaults = get_default_weights()
     if WEIGHTS_KEY not in st.session_state:
-        st.session_state[WEIGHTS_KEY] = get_default_weights()
+        st.session_state[WEIGHTS_KEY] = defaults
+    else:
+        # v18: 評価項目の追加・有効化後も重み辞書を自動同期する。
+        # 旧項目は除外し、新規項目にはマスタ既定値を付与してから合計1に正規化する。
+        current = st.session_state[WEIGHTS_KEY]
+        synced = {k: float(current.get(k, v)) for k, v in defaults.items()}
+        total = sum(synced.values())
+        if total > 0:
+            synced = {k: v / total for k, v in synced.items()}
+        st.session_state[WEIGHTS_KEY] = synced
 
     if CURRENT_PATTERN_KEY not in st.session_state:
         st.session_state[CURRENT_PATTERN_KEY] = "標準"
@@ -98,7 +108,13 @@ def apply_pattern(name: str) -> bool:
     pattern = get_pattern(name)
     if pattern is None:
         return False
-    st.session_state[WEIGHTS_KEY] = dict(pattern["weights"])
+    defaults = get_default_weights()
+    supplied = pattern.get("weights", {})
+    merged = {k: float(supplied.get(k, defaults[k])) for k in defaults}
+    total = sum(merged.values())
+    if total > 0:
+        merged = {k: v / total for k, v in merged.items()}
+    st.session_state[WEIGHTS_KEY] = merged
     st.session_state[CURRENT_PATTERN_KEY] = name
     return True
 

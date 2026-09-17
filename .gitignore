@@ -1,12 +1,21 @@
-# APIキーなどの秘匿情報を含むため、.env自体は共有・コミットしない
+# ===== 秘密情報 =====
 .env
-
-# Pythonキャッシュ
-__pycache__/
-*.pyc
-
-# Streamlitのローカル設定（secrets.tomlを使う場合）
+.env.*
+!.env.example
 .streamlit/secrets.toml
 
-# AI相談機能の実行時データ（1日の利用回数）。実行環境ごとに変わるため共有しない
+# ===== AI実行時データ =====
 data/ai_usage.json
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

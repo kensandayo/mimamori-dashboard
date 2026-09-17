@@ -1,20 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 services/ai_service.py
--------------------------
-「AI相談」画面が使う、AIとのやり取りをまとめたモジュールです。
+----------------------
+地域データをOpenAI APIに渡し、自治体職員向けに回答するサービス層。
 
-このファイルが担当すること:
-1. 選択された地区のデータだけを、AIに渡す「文脈（コンテキスト）」に変換する
-   （CSV全体は渡さない。評価項目はマスタから動的に取得するため、項目が
-   増減しても自動的に反映される）
-2. AIの振る舞いルール（自治体職員向け・推測禁止など）を定めたシステムプロンプト
-3. OpenAI APIを呼び出して回答を受け取る処理（コスト最小化の設定を含む）
-4. APIキー未設定・課金不足・通信エラー・タイムアウトを、画面側が分かりやすく
-   表示できる形にする
-5. 同じ地区・同じ質問（会話1問目）に対するキャッシュ（API再呼び出しの削減）
-
-1日の利用回数の管理は services/usage_tracker.py に分離しています。
+v11:
+- NumPy / pandas 型をJSON化できない問題を修正
+- OpenAI Responses APIを使用
+- ローカル .env と Streamlit Cloud Secrets の両方に対応
+- APIキーをコード・GitHubへ保存しない
 """
 
 from __future__ import annotations
@@ -22,22 +16,33 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from typing import Dict, List, Optional, TypedDict
+from typing import Dict, List, Optional, TypedDict, Any
 
+import numpy as np
 import pandas as pd
 
 from utils.config import COL_NAME, COL_RANK, COL_SCORE, COL_PRIORITY
-from utils.parameter_loader import load_active_parameters
+from utils.parameter_loader import load_active_parameters, load_all_parameters
 from utils.scoring import generate_analysis_comments
 
 try:
+    import streamlit as st
+except ImportError:  # pragma: no cover
+    st = None  # type: ignore
+
+try:
     from openai import (
-        OpenAI, APIConnectionError, APITimeoutError, RateLimitError, AuthenticationError,
+        OpenAI,
+        APIConnectionError,
+        APITimeoutError,
+        RateLimitError,
+        AuthenticationError,
+        BadRequestError,
     )
     _OPENAI_IMPORT_ERROR: Optional[Exception] = None
 except ImportError as e:  # pragma: no cover
     OpenAI = None  # type: ignore
-    APIConnectionError = APITimeoutError = RateLimitError = AuthenticationError = Exception  # type: ignore
+    APIConnectionError = APITimeoutError = RateLimitError = AuthenticationError = BadRequestError = Exception  # type: ignore
     _OPENAI_IMPORT_ERROR = e
 
 try:
@@ -48,11 +53,11 @@ except ImportError:
 
 
 class AIServiceError(Exception):
-    """AIサービス関連の共通エラーです。画面側はこれをキャッチしてst.errorで表示します。"""
+    pass
 
 
 class AIServiceConfigError(AIServiceError):
-    """APIキー未設定など、設定不備が原因のエラーです。"""
+    pass
 
 
 class ChatTurn(TypedDict):
@@ -60,83 +65,164 @@ class ChatTurn(TypedDict):
     content: str
 
 
-# ============================================================
-# 設定（コスト最小化のための定数。変更したい場合はここだけ直せばよい）
-# ============================================================
-DEFAULT_MODEL = "gpt-4o-mini"
-MAX_OUTPUT_TOKENS = 400
-TEMPERATURE = 0.2
-REQUEST_TIMEOUT_SECONDS = 30
+DEFAULT_MODEL = "gpt-5.6-luna"
+MAX_OUTPUT_TOKENS = 1500
+REQUEST_TIMEOUT_SECONDS = 45
 DEFAULT_DAILY_LIMIT = 50
 
 
+def _read_secret(name: str) -> Optional[str]:
+    """環境変数 → Streamlit Secrets の順で安全に設定値を取得する。"""
+    value = os.getenv(name)
+    if value:
+        return value
+
+    if st is not None:
+        try:
+            secret_value = st.secrets.get(name)
+            if secret_value is not None:
+                return str(secret_value)
+        except Exception:
+            pass
+    return None
+
+
 def _get_model_name() -> str:
-    return os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
+    return _read_secret("OPENAI_MODEL") or DEFAULT_MODEL
 
 
 def get_daily_limit() -> int:
-    raw = os.getenv("DAILY_AI_LIMIT")
+    raw = _read_secret("DAILY_AI_LIMIT")
     if raw is None:
         return DEFAULT_DAILY_LIMIT
     try:
-        return int(raw)
-    except ValueError:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
         return DEFAULT_DAILY_LIMIT
+
+
+def is_ai_configured() -> bool:
+    return bool(_read_secret("OPENAI_API_KEY"))
 
 
 def _get_client() -> "OpenAI":
     if OpenAI is None:
         raise AIServiceConfigError(
-            "openai ライブラリがインストールされていません。"
-            "「pip install -r requirements.txt」を実行してください。"
+            "openaiライブラリがインストールされていません。"
+            "pip install -r requirements.txt を実行してください。"
         ) from _OPENAI_IMPORT_ERROR
-    api_key = os.getenv("OPENAI_API_KEY")
+
+    api_key = _read_secret("OPENAI_API_KEY")
     if not api_key:
         raise AIServiceConfigError(
             "OPENAI_API_KEY が設定されていません。"
-            "プロジェクト直下に .env ファイルを作成し、"
-            "OPENAI_API_KEY=sk-xxxxx のようにAPIキーを設定してください。"
+            "ローカルでは .env、Streamlit Cloudでは Settings → Secrets に設定してください。"
         )
-    return OpenAI(api_key=api_key)
+    return OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS)
 
 
-# ============================================================
-# AIの振る舞いルール（システムプロンプト。短いほどコスト削減になる）
-# ============================================================
-SYSTEM_PROMPT = """あなたは自治体職員向け「地域見守り意思決定支援システム」のAI相談機能です。
-必ず守ること：
-・渡された地区データの範囲内でのみ回答し、推測で情報を作らない
-・データに無いことは「判断できません」と答える
-・個人への対応は断定しない。地区単位の参考情報として回答する
-・施策の必要性は断定せず、参考情報・確認候補として述べる
-
-回答は300〜500文字程度で簡潔にし、冗長な説明はしないこと。
-次の見出しで構成すること（注意事項は必要な場合のみ最後に加える）。
+SYSTEM_PROMPT = """あなたは自治体職員向け「地域見守り・施策検討支援システム」のAI相談機能です。
+次のルールを必ず守ってください。
+- 提供された地区データだけを事実として扱い、存在しない数値や制度を作らない。
+- データだけでは判断できないことは「このデータだけでは判断できません」と明示する。
+- スコアや順位は行政サービスの良否を断定するものではなく、確認候補を探す参考指標として扱う。
+- 「この施策を導入すべき」と断定しない。職員の検討材料として説明する。
+- 個人単位の判断や対応を行わない。
+- 元データと評価スコアを混同しない。
+回答は日本語で簡潔にし、原則として次の順で書いてください。
 【結論】
-【根拠】
-【考えられる対応】
+【データから確認できること】
+【検討時に追加で確認したいこと】
 """
 
 
-# ============================================================
-# 地区データ → AIに渡す文脈（コンテキスト）の変換
-# ============================================================
+def _json_default(value: Any) -> Any:
+    """NumPy / pandas値をJSON標準型へ変換する。"""
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        value = float(value)
+        return None if np.isnan(value) else value
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if value is pd.NA:
+        return None
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return str(value)
+
+
+def _json_dumps(value: Any, *, indent: Optional[int] = None, sort_keys: bool = False) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        indent=indent,
+        sort_keys=sort_keys,
+        default=_json_default,
+        allow_nan=False,
+    )
+
+
+def _safe_scalar(value: Any) -> Any:
+    """Seriesから取り出した値をコンテキスト用の標準Python型にする。"""
+    if value is None or value is pd.NA:
+        return None
+    if isinstance(value, float) and np.isnan(value):
+        return None
+    try:
+        converted = _json_default(value)
+        return converted
+    except Exception:
+        return str(value)
+
+
 def build_district_context(row: pd.Series, scored_df: pd.DataFrame) -> dict:
-    """1地区分のデータを、AIに渡すための辞書に変換します。評価項目はマスタから動的に取得します。"""
-    parameters = load_active_parameters()
-    indicators = {p["label"]: row[p["key"]] for p in parameters}
+    # AI相談では、着目度計算に使う項目だけでなく「地域カルテ」の参考指標も渡す。
+    # スコア計算はactive=Trueの項目だけ、AIの説明材料は全登録項目を対象とする。
+    parameters = load_all_parameters()
+
+    indicators = {}
+    for p in parameters:
+        key = p["key"]
+        raw_value = _safe_scalar(row.get(key))
+        indicators[p["label"]] = {
+            "元データ": raw_value,
+            "単位": p.get("unit", ""),
+            "意味": p.get("description", ""),
+            "評価方向": "高いほど課題" if p.get("risk_direction") == "positive" else "高いほど良好",
+            "着目度計算に使用": bool(p.get("active", False)),
+            "データ種別": p.get("data_type", ""),
+            "対象年度": p.get("target_year", ""),
+            "出典": p.get("source", ""),
+        }
+
+    score_parameters = [p for p in parameters if p.get("active", False)]
+    comments = generate_analysis_comments(row, scored_df, score_parameters)
+    if not isinstance(comments, (list, tuple)):
+        comments = [str(comments)]
+
     return {
-        "地区名": row[COL_NAME],
+        "地区名": str(row[COL_NAME]),
         "順位": f"{int(row[COL_RANK])}位 / 全{len(scored_df)}地区",
         "総合スコア": round(float(row[COL_SCORE]), 1),
-        "優先度": row[COL_PRIORITY],
+        "着目度": str(row[COL_PRIORITY]),
         "評価項目": indicators,
-        "自動分析コメント": generate_analysis_comments(row, scored_df, parameters),
+        "自動分析コメント": [str(x) for x in comments],
+        "注意": "総合スコア・順位は確認候補を探す参考指標であり、行政サービスの良否を断定するものではありません。",
     }
 
 
 def build_prompt_context(
-    target_row: pd.Series, scored_df: pd.DataFrame, compare_row: Optional[pd.Series] = None,
+    target_row: pd.Series,
+    scored_df: pd.DataFrame,
+    compare_row: Optional[pd.Series] = None,
 ) -> dict:
     context = {"対象地区": build_district_context(target_row, scored_df)}
     if compare_row is not None:
@@ -144,63 +230,79 @@ def build_prompt_context(
     return context
 
 
-# ============================================================
-# AIへの問い合わせ
-# ============================================================
+def _build_input(question: str, context: dict, history: List[ChatTurn]) -> list[dict]:
+    input_items: list[dict] = []
+
+    # 過去の会話は最大6メッセージ程度を想定。役割はuser/assistantのみ。
+    for turn in history:
+        role = "assistant" if turn.get("role") == "assistant" else "user"
+        input_items.append({"role": role, "content": str(turn.get("content", ""))})
+
+    context_json = _json_dumps(context, indent=2)
+    user_text = (
+        "以下の地区データを根拠に回答してください。"
+        "データにない事実を補わないでください。\n\n"
+        f"【地区データ】\n{context_json}\n\n"
+        f"【質問】\n{question.strip()}"
+    )
+    input_items.append({"role": "user", "content": user_text})
+    return input_items
+
+
 def ask_ai(question: str, context: dict, history: Optional[List[ChatTurn]] = None) -> str:
     client = _get_client()
     history = history or []
 
-    messages: List[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages.extend({"role": turn["role"], "content": turn["content"]} for turn in history)
-
-    user_content = (
-        "以下はシステムから渡される地区データです。この範囲の情報のみを事実として"
-        "回答してください。ここに無い情報は「分からない」としてください。\n\n"
-        f"【地区データ】\n```json\n{json.dumps(context, ensure_ascii=False, indent=2)}\n```\n\n"
-        f"【質問】\n{question}"
-    )
-    messages.append({"role": "user", "content": user_content})
-
     try:
-        response = client.chat.completions.create(
-            model=_get_model_name(), messages=messages,
-            temperature=TEMPERATURE, max_tokens=MAX_OUTPUT_TOKENS, timeout=REQUEST_TIMEOUT_SECONDS,
+        response = client.responses.create(
+            model=_get_model_name(),
+            instructions=SYSTEM_PROMPT,
+            input=_build_input(question, context, history),
+            max_output_tokens=MAX_OUTPUT_TOKENS,
         )
     except AuthenticationError as e:
-        raise AIServiceConfigError("APIキーが正しくありません。.envのOPENAI_API_KEYを確認してください。") from e
+        raise AIServiceConfigError(
+            "OpenAI APIキーが正しくありません。OPENAI_API_KEYを確認してください。"
+        ) from e
     except RateLimitError as e:
         raise AIServiceError(
-            "APIの利用上限、またはOpenAIアカウントの課金残高不足の可能性があります。"
-            "OpenAIアカウントの請求設定をご確認ください。"
+            "OpenAI APIの利用上限または課金残高を確認してください。"
         ) from e
     except APITimeoutError as e:
-        raise AIServiceError("AIサーバーへの応答がタイムアウトしました。しばらくしてから再度お試しください。") from e
+        raise AIServiceError(
+            "AIの応答がタイムアウトしました。少し待ってから再度お試しください。"
+        ) from e
     except APIConnectionError as e:
-        raise AIServiceError("通信エラーが発生しました。ネットワーク接続をご確認のうえ、再度お試しください。") from e
+        raise AIServiceError(
+            "OpenAI APIとの通信に失敗しました。ネットワーク接続を確認してください。"
+        ) from e
+    except BadRequestError as e:
+        raise AIServiceError(
+            f"AIへのリクエスト内容に問題があります：{e}"
+        ) from e
     except Exception as e:  # noqa: BLE001
         raise AIServiceError(f"AIへの問い合わせ中にエラーが発生しました：{e}") from e
 
-    answer = response.choices[0].message.content
-    if not answer:
-        raise AIServiceError("AIから空の回答が返されました。もう一度お試しください。")
-    return answer
+    answer = getattr(response, "output_text", None)
+    if not answer or not str(answer).strip():
+        raise AIServiceError("AIから回答本文を取得できませんでした。もう一度お試しください。")
+    return str(answer).strip()
 
 
-# ============================================================
-# キャッシュ（同じ地区・同じ質問なら再度APIを呼ばない。会話1問目のみ対象）
-# ============================================================
 _answer_cache: Dict[str, str] = {}
 
 
 def _build_cache_key(question: str, context: dict) -> str:
-    normalized_context = json.dumps(context, ensure_ascii=False, sort_keys=True)
+    normalized_context = _json_dumps(context, sort_keys=True)
     raw_key = f"{question.strip()}||{normalized_context}"
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
-def ask_ai_cached(question: str, context: dict, history: Optional[List[ChatTurn]] = None) -> "tuple[str, bool]":
-    """ask_ai() のキャッシュ付きラッパー。戻り値は (回答, キャッシュ利用有無)。"""
+def ask_ai_cached(
+    question: str,
+    context: dict,
+    history: Optional[List[ChatTurn]] = None,
+) -> "tuple[str, bool]":
     history = history or []
     if not history:
         cache_key = _build_cache_key(question, context)
@@ -209,4 +311,5 @@ def ask_ai_cached(question: str, context: dict, history: Optional[List[ChatTurn]
         answer = ask_ai(question, context, history=[])
         _answer_cache[cache_key] = answer
         return answer, False
+
     return ask_ai(question, context, history=history), False

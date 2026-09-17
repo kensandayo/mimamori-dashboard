@@ -11,7 +11,7 @@ config.py
 data/parameter_master.csv に移しました。
 
 このファイルには「指標が何個・何であっても変わらないもの」
-（システム全体の固定列名、優先度の色分けルール、パスなど）だけを残しています。
+（システム全体の固定列名、着目度の色分けルール、パスなど）だけを残しています。
 指標の一覧が欲しいときは utils/parameter_loader.py を使ってください。
 """
 
@@ -20,7 +20,7 @@ from pathlib import Path
 # ============================================================
 # アプリのバージョン表示（サイドバー下部に表示）
 # ============================================================
-APP_VERSION = "v10 (2026-08-18) 施策事例データ拡充・比較機能追加"
+APP_VERSION = "v18.0"
 
 APP_TITLE = "地域見守り意思決定支援システム"
 
@@ -52,10 +52,10 @@ COL_LON = "経度"
 # 計算後に追加される列名
 COL_SCORE = "総合スコア"
 COL_RANK = "順位"
-COL_PRIORITY = "優先度"
+COL_PRIORITY = "着目度"
 
 # ============================================================
-# 優先度の色分け
+# 着目度の色分け
 # ============================================================
 PRIORITY_HIGH = "高"
 PRIORITY_MID = "中"
@@ -69,6 +69,16 @@ PRIORITY_COLORS = {
 
 PRIORITY_HIGH_QUANTILE = 0.75
 PRIORITY_LOW_QUANTILE = 0.25
+
+# ============================================================
+# 評価項目の「データ種別」の選択肢
+# （評価項目管理画面・アンケート取り込み画面で共通して使用）
+# ============================================================
+DATA_TYPE_PUBLIC = "公開データ"
+DATA_TYPE_ADMIN = "行政保有データ"
+DATA_TYPE_SURVEY = "アンケート"
+DATA_TYPE_OTHER = "その他"
+DATA_TYPE_OPTIONS = [DATA_TYPE_PUBLIC, DATA_TYPE_ADMIN, DATA_TYPE_SURVEY, DATA_TYPE_OTHER]
 
 # ============================================================
 # UIの配色（青・白・グレー基調）
@@ -85,6 +95,7 @@ COLOR_TEXT_SUB = "#6b7280"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CSV_PATH = PROJECT_ROOT / "data" / "sample_data.csv"
 PARAMETER_MASTER_PATH = PROJECT_ROOT / "data" / "parameter_master.csv"
+CATEGORY_MASTER_PATH = PROJECT_ROOT / "data" / "category_master.csv"
 POLICY_MASTER_PATH = PROJECT_ROOT / "data" / "policy_master.csv"
 PATTERNS_PATH = PROJECT_ROOT / "data" / "patterns.json"
 

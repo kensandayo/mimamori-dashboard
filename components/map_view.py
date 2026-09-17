@@ -5,7 +5,7 @@ map_view.py
 Foliumを使って地区ごとに色分けした地図を生成するコンポーネントです。
 
 【v8での変更点】
-以前は「優先度（総合スコア由来）」の色分けのみでしたが、
+以前は「着目度（総合スコア由来）」の色分けのみでしたが、
 display_param を指定すると、マスタに登録されている任意の評価項目の
 健全度スコア（0〜100、高いほど良い）で色分け・ラベル表示できるようにしました。
 新しい評価項目を登録すると、この選択肢にも自動的に追加されます
@@ -27,7 +27,7 @@ from utils.scoring import get_indicator_health_scores
 
 
 def _health_color(score: float) -> str:
-    """0〜100の健全度スコアを、優先度と同じ配色ルール（低いほど赤）に変換します。"""
+    """0〜100の健全度スコアを、着目度と同じ配色ルール（低いほど赤）に変換します。"""
     if score < 50:
         return PRIORITY_COLORS[PRIORITY_HIGH]
     if score < 70:
@@ -43,7 +43,7 @@ def build_priority_map(
     """
     地区マーカーを含むFoliumマップを生成します。
 
-    display_param: Noneなら「総合スコアの優先度」で色分け（従来通り）。
+    display_param: Noneなら「総合スコアの着目度」で色分け（従来通り）。
                     parameter_loader由来の項目辞書を渡すと、その項目の
                     健全度スコアで色分け・ラベル表示します。
     highlight_name: 検索などで強調したい地区名。
@@ -66,7 +66,7 @@ def build_priority_map(
             label_value = f"{health['score']:.0f}"
         else:
             color = PRIORITY_COLORS.get(row[COL_PRIORITY], PRIORITY_COLORS[PRIORITY_MID])
-            popup_metric_line = f"優先度: <b>{row[COL_PRIORITY]}</b>"
+            popup_metric_line = f"着目度: <b>{row[COL_PRIORITY]}</b>"
             label_value = None
 
         popup_html = f"""
@@ -118,7 +118,7 @@ def _add_legend(fmap: folium.Map, display_param: Optional[dict]) -> None:
         mid_line = f"{PRIORITY_COLORS[PRIORITY_MID]}::中（50〜69点）"
         low_line = f"{PRIORITY_COLORS[PRIORITY_LOW]}::高（70点以上・良好）"
     else:
-        title = "優先度（見守りニーズ）"
+        title = "着目度（見守りニーズ）"
         high_line = f"{PRIORITY_COLORS[PRIORITY_HIGH]}::高（上位25%）"
         mid_line = f"{PRIORITY_COLORS[PRIORITY_MID]}::中"
         low_line = f"{PRIORITY_COLORS[PRIORITY_LOW]}::低（下位25%）"

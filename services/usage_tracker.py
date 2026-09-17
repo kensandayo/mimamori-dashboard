@@ -40,9 +40,14 @@ def _load_usage() -> UsageData:
 
 
 def _save_usage(data: UsageData) -> None:
-    USAGE_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(USAGE_FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
+    """利用回数保存。クラウド環境で書き込み不可でもAI機能自体は止めない。"""
+    try:
+        USAGE_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(USAGE_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except OSError:
+        # Streamlit Cloud等の一時/制限付きファイルシステムでも本機能を落とさない
+        return
 
 
 def get_today_usage() -> int:

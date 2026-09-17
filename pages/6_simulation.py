@@ -74,12 +74,12 @@ if run:
     rank_change = int(before_row[COL_RANK]) - int(after_row[COL_RANK])
     c2.metric("順位", f"{int(after_row[COL_RANK])} 位",
               f"{rank_change:+d} 位変化" if rank_change != 0 else "変化なし")
-    c3.metric("優先度", after_row[COL_PRIORITY], f"変更前：{before_row[COL_PRIORITY]}")
+    c3.metric("着目度", after_row[COL_PRIORITY], f"変更前：{before_row[COL_PRIORITY]}")
 
     st.markdown(f"地区総合スコア　{before_row[COL_SCORE]:.1f} → {after_row[COL_SCORE]:.1f}")
 
     st.markdown("#### 地図の再計算結果（仮定反映後）")
-    st.caption("仮定を反映した後の優先度で地図を再描画しています。対象地区を強調表示しています。")
+    st.caption("仮定を反映した後の着目度で地図を再描画しています。対象地区を強調表示しています。")
     after_map = build_priority_map(result["after_df"], highlight_name=target)
     st_folium(after_map, width=None, height=480, returned_objects=[])
 

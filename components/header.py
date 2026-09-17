@@ -20,8 +20,8 @@ def render_header(page_title: str = "", page_caption: str = "") -> None:
     st.markdown(
         f"""
         <div style="background-color:{COLOR_ACCENT_BG}; border-left:6px solid {COLOR_PRIMARY};
-                    padding:14px 18px; border-radius:8px; margin-bottom:20px;">
-            <div style="font-size:14px; color:{COLOR_PRIMARY_DARK}; line-height:1.7;">
+                    padding:11px 16px; border-radius:8px; margin-bottom:16px;">
+            <div style="font-size:13px; color:{COLOR_PRIMARY_DARK}; line-height:1.6;">
                 {SYSTEM_DISCLAIMER}
             </div>
         </div>
@@ -40,10 +40,10 @@ def render_footer() -> None:
     st.markdown(
         f"""
         <div style="background-color:#f3f4f6; border-left:6px solid {COLOR_TEXT_SUB};
-                    padding:12px 18px; border-radius:8px; margin-top:10px;">
-            <div style="font-size:13px; color:#374151;">
+                    padding:10px 16px; border-radius:8px; margin-top:8px;">
+            <div style="font-size:12.5px; color:#374151;">
                 <strong>本システムについて（ご利用にあたっての注意）</strong>
-                <ul style="margin:6px 0 0 0; padding-left:20px;">
+                <ul style="margin:5px 0 0 0; padding-left:20px;">
                     {items_html}
                 </ul>
             </div>

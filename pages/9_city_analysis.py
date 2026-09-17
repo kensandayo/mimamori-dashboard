@@ -17,7 +17,10 @@ import streamlit as st
 from utils.config import COL_NAME, COL_SCORE, COL_RANK
 from utils.state import get_scored_data
 from utils.parameter_loader import load_active_parameters
-from utils.scoring import get_city_health_scores, get_policy_candidates, get_indicator_health_scores
+from utils.scoring import (
+    get_city_health_scores, get_policy_candidates, get_indicator_health_scores,
+    get_city_category_health_scores,
+)
 from components.header import render_header, render_footer
 from components.charts import build_health_score_bar
 
@@ -32,6 +35,24 @@ city_score = scored_df[COL_SCORE].mean()
 st.markdown("### 宇都宮市 総合スコア（全地区平均）")
 st.markdown(f"## {city_score:.1f} / 100")
 st.caption("本スコアは地域の状況を比較・検討するための参考指標であり、行政サービスの良し悪しを正式に評価する点数ではありません。")
+
+st.markdown("---")
+
+# ------------------------------------------------------------
+# カテゴリ別の状況（人口・世帯／介護・健康／移動・生活環境…）
+# ------------------------------------------------------------
+st.markdown("### カテゴリ別の状況（市全体平均）")
+st.caption(
+    "評価項目を「人口・世帯」「移動・生活環境」などのカテゴリで束ね、カテゴリ単位の傾向を確認できます。"
+    "カテゴリの構成は「設定・データ管理」画面の評価項目管理で変更できます。"
+)
+city_category_scores = get_city_category_health_scores(scored_df, parameters)
+if city_category_scores:
+    cat_cols = st.columns(len(city_category_scores))
+    for col, c in zip(cat_cols, city_category_scores):
+        col.metric(c["label"], f"{c['score']:.1f}点", f"項目数 {c['param_count']}")
+else:
+    st.caption("有効な評価項目が登録されていません。")
 
 st.markdown("---")
 

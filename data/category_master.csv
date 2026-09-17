@@ -1,0 +1,9 @@
+﻿category_id,label,display_order
+population,人口・世帯,1
+care_health,介護・健康,2
+mobility_env,移動・生活環境,3
+social_ties,社会参加・つながり,4
+lifestyle,生活習慣,5
+welfare_service,福祉サービス,6
+field_info,現場の気づき,7
+other,その他,8

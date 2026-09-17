@@ -20,11 +20,11 @@ import streamlit as st
 from utils.config import APP_TITLE, APP_VERSION
 from utils.state import init_state, get_current_pattern_name, apply_pattern
 from utils.patterns import list_pattern_names
-from components.style import inject_global_css, inject_interview_scale_css
+from components.style import inject_global_css, inject_no_transform_compact_css
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🏘️", layout="wide")
 inject_global_css()
-inject_interview_scale_css()
+inject_no_transform_compact_css()
 init_state()
 
 PAGES_DIR = Path(__file__).resolve().parent / "pages"
@@ -37,7 +37,7 @@ pages = [
     st.Page(str(PAGES_DIR / "5_district_report.py"), title="地区詳細", icon="📋"),
     st.Page(str(PAGES_DIR / "6_simulation.py"), title="シミュレーション", icon="🔮"),
     st.Page(str(PAGES_DIR / "7_data_management.py"), title="設定・データ管理", icon="⚙️"),
-#     st.Page(str(PAGES_DIR / "8_ai_consultation.py"), title="AI相談", icon="💬"),
+    st.Page(str(PAGES_DIR / "8_ai_consultation.py"), title="AI相談", icon="💬"),
     st.Page(str(PAGES_DIR / "9_city_analysis.py"), title="市全体分析", icon="🏙️"),
 ]
 
@@ -49,11 +49,17 @@ with st.sidebar:
     st.markdown("---")
 
     # 評価パターンの切り替え（画面上部＝サイドバーに常時表示。全画面に即時反映される）
+    # ラジオボタン形式（以前セレクトボックスのドロップダウンが画面下に隠れて
+    # 選択できなくなる問題があったため、常に全選択肢が見える形式にしている）。
+    # サイドバー自体の縦スクロールは components/style.py 側で
+    # [data-testid="stSidebarContent"] に overflow-y:auto を設定済みのため、
+    # パターンが増えて選択肢がサイドバーの表示領域を超えても、
+    # サイドバー内だけが自然にスクロールして全選択肢を選べる。
     pattern_names = list_pattern_names()
     if pattern_names:
         current = get_current_pattern_name()
         options = pattern_names if current in pattern_names else pattern_names + [current]
-        selected_pattern = st.selectbox(
+        selected_pattern = st.radio(
             "評価パターン", options=options, index=options.index(current), key="global_pattern_select",
         )
         if selected_pattern != current and selected_pattern in pattern_names:

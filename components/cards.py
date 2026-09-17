@@ -21,11 +21,11 @@ class CardData(TypedDict, total=False):
 
 
 _CARD_TEMPLATE = """
-<div style="background-color:#ffffff; border:1px solid {border}; border-radius:12px;
-            padding:18px 16px; text-align:center; box-shadow:0 1px 4px rgba(15,23,42,0.06);
+<div class="dashboard-kpi-card" style="background-color:#ffffff; border:1px solid {border}; border-radius:12px;
+            padding:8px 12px; text-align:center; box-shadow:0 1px 4px rgba(15,23,42,0.06);
             height:100%;">
-    <div style="font-size:13px; color:{sub}; margin-bottom:8px; font-weight:600;">{label}</div>
-    <div style="font-size:28px; font-weight:700; color:{primary};">{value}</div>
+    <div style="font-size:12px; color:{sub}; margin-bottom:3px; font-weight:600;">{label}</div>
+    <div style="font-size:21px; font-weight:700; color:{primary};">{value}</div>
     {caption_html}
 </div>
 """
@@ -37,7 +37,7 @@ def render_metric_cards(cards: List[CardData], columns: Optional[int] = None) ->
     for col, card in zip(cols, cards):
         caption_html = ""
         if card.get("caption"):
-            caption_html = f'<div style="font-size:12px; color:{COLOR_TEXT_SUB}; margin-top:6px;">{card["caption"]}</div>'
+            caption_html = f'<div style="font-size:11px; color:{COLOR_TEXT_SUB}; margin-top:2px;">{card["caption"]}</div>'
         with col:
             st.markdown(
                 _CARD_TEMPLATE.format(

@@ -1,38 +1,82 @@
 {
   "標準": {
-    "description": "各評価項目をバランス良く見る標準パターンです。",
+    "description": "人口・移動・健康・社会参加・福祉を横断して見る標準パターンです。",
     "weights": {
-      "aging": 0.15,
-      "single_elderly": 0.15,
-      "medical": 0.15,
-      "mobility": 0.2,
-      "daily_supplies": 0.1,
-      "meal_service": 0.1,
-      "emergency_alert": 0.15
+      "aging": 0.08,
+      "old75": 0.05,
+      "single_elderly": 0.08,
+      "population_decline": 0.04,
+      "medical": 0.06,
+      "mobility": 0.13,
+      "shopping_access": 0.06,
+      "care_risk": 0.08,
+      "dementia_risk": 0.06,
+      "homebound_risk": 0.08,
+      "social_capital": 0.07,
+      "gathering_participation": 0.06,
+      "instrumental_support": 0.06,
+      "meal_service": 0.05,
+      "emergency_alert": 0.04
     }
   },
   "移動重視": {
-    "description": "移動系（公共交通・通院/買い物の移動手段など）の課題を重視するパターンです。",
+    "description": "公共交通・買い物・医療アクセスと閉じこもりを重点的に確認します。",
     "weights": {
-      "aging": 0.1,
-      "single_elderly": 0.1,
-      "medical": 0.1,
-      "mobility": 0.4,
-      "daily_supplies": 0.1,
-      "meal_service": 0.1,
-      "emergency_alert": 0.1
+      "aging": 0.04477,
+      "old75": 0.027981,
+      "single_elderly": 0.04477,
+      "population_decline": 0.022385,
+      "medical": 0.113646,
+      "mobility": 0.246233,
+      "shopping_access": 0.113646,
+      "care_risk": 0.04477,
+      "dementia_risk": 0.033577,
+      "homebound_risk": 0.151528,
+      "social_capital": 0.039173,
+      "gathering_participation": 0.033577,
+      "instrumental_support": 0.033577,
+      "meal_service": 0.027981,
+      "emergency_alert": 0.022385
     }
   },
-  "見守り重視": {
-    "description": "単身高齢者の孤立防止や緊急時対応など、見守りの側面を重視するパターンです。",
+  "見守り・孤立重視": {
+    "description": "単身高齢者、閉じこもり、社会的つながり、サポート、緊急通報を重点的に確認します。",
     "weights": {
-      "aging": 0.15,
-      "single_elderly": 0.2,
-      "medical": 0.1,
-      "mobility": 0.1,
-      "daily_supplies": 0.1,
-      "meal_service": 0.1,
-      "emergency_alert": 0.25
+      "aging": 0.049601,
+      "old75": 0.031001,
+      "single_elderly": 0.141718,
+      "population_decline": 0.024801,
+      "medical": 0.037201,
+      "mobility": 0.080602,
+      "shopping_access": 0.037201,
+      "care_risk": 0.049601,
+      "dementia_risk": 0.037201,
+      "homebound_risk": 0.141718,
+      "social_capital": 0.124004,
+      "gathering_participation": 0.037201,
+      "instrumental_support": 0.106289,
+      "meal_service": 0.031001,
+      "emergency_alert": 0.070859
+    }
+  },
+  "介護予防重視": {
+    "description": "要支援・要介護、認知症、社会参加を重点的に確認します。",
+    "weights": {
+      "aging": 0.053283,
+      "old75": 0.033302,
+      "single_elderly": 0.053283,
+      "population_decline": 0.026641,
+      "medical": 0.039962,
+      "mobility": 0.086584,
+      "shopping_access": 0.039962,
+      "care_risk": 0.152236,
+      "dementia_risk": 0.114177,
+      "homebound_risk": 0.053283,
+      "social_capital": 0.133206,
+      "gathering_participation": 0.114177,
+      "instrumental_support": 0.039962,
+      "meal_service": 0.033302,
+      "emergency_alert": 0.026641
     }
   }
 }

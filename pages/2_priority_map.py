@@ -4,7 +4,7 @@ priority_map.py
 ------------------
 地域マップ画面です。このアプリの中心機能として、以下を提供します。
 
-- 総合スコア（優先度）だけでなく、任意の評価項目で色分け表示を切り替え可能（動的）
+- 総合スコア（着目度）だけでなく、任意の評価項目で色分け表示を切り替え可能（動的）
 - 地区名の常時ラベル表示・凡例表示
 - 地区検索（ヒットした地区にズーム＆ハイライト）
 - マーカー／地区一覧のクリックによる詳細表示
@@ -33,10 +33,10 @@ district_names = scored_df[COL_NAME].tolist()
 # ------------------------------------------------------------
 # 表示する項目の切り替え（動的：マスタに登録された評価項目が自動で選択肢になる）
 # ------------------------------------------------------------
-display_options = ["総合スコア（優先度）"] + [p["label"] for p in parameters]
+display_options = ["総合スコア（着目度）"] + [p["label"] for p in parameters]
 display_choice = st.selectbox("マップに表示する項目", options=display_options)
 display_param = None
-if display_choice != "総合スコア（優先度）":
+if display_choice != "総合スコア（着目度）":
     display_param = next(p for p in parameters if p["label"] == display_choice)
 
 # ------------------------------------------------------------
@@ -84,7 +84,7 @@ with col_detail:
     m1, m2 = st.columns(2)
     m1.metric("順位", f"{int(row[COL_RANK])} 位")
     m2.metric("総合スコア", f"{row[COL_SCORE]:.1f} 点")
-    st.markdown(f"**優先度：{row[COL_PRIORITY]}**")
+    st.markdown(f"**着目度：{row[COL_PRIORITY]}**")
 
     st.markdown("**各評価項目**")
     for p in parameters:

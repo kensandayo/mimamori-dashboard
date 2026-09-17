@@ -38,7 +38,7 @@ with tab1:
     c1, c2, c3 = st.columns(3)
     c1.metric("総合スコア", f"{target_row[COL_SCORE]:.1f} 点", f"{target_row[COL_SCORE] - city_avg[COL_SCORE]:+.1f}（対平均）")
     c2.metric("順位", f"{int(target_row[COL_RANK])} 位 / {len(scored_df)}地区")
-    c3.metric("優先度", target_row[COL_PRIORITY])
+    c3.metric("着目度", target_row[COL_PRIORITY])
 
     st.markdown("#### 指標別：平均との差")
     diffs = [target_row[col] - city_avg[col] for col in INDICATOR_COLS]

@@ -49,7 +49,7 @@ def _risk_value(row: pd.Series, param: dict) -> float:
 
 def calculate_scores(df: pd.DataFrame, weights: Weights, parameters: Optional[Parameters] = None) -> pd.DataFrame:
     """
-    各地区の総合スコア・順位・優先度を計算して列を追加したDataFrameを返します。
+    各地区の総合スコア・順位・着目度を計算して列を追加したDataFrameを返します。
     parametersを省略すると、その時点でマスタに登録されている有効な評価項目を使います
     （＝評価項目管理画面で項目を追加・削除すると、次の計算から自動的に反映されます）。
     """
@@ -162,7 +162,7 @@ def health_score_to_raw_value(health_score: float, param: dict) -> float:
 
 def generate_analysis_comments(row: pd.Series, df: pd.DataFrame, parameters: Optional[Parameters] = None,
                                 threshold: float = 3.0) -> list:
-    """「なぜこの順位・優先度になったのか」を説明する自動分析コメントのリストを生成します。"""
+    """「なぜこの順位・着目度になったのか」を説明する自動分析コメントのリストを生成します。"""
     parameters = parameters if parameters is not None else load_active_parameters()
     comments = []
     for param in parameters:
@@ -202,6 +202,82 @@ def get_city_health_scores(df: pd.DataFrame, parameters: Optional[Parameters] = 
     parameters = parameters if parameters is not None else load_active_parameters()
     avg_row = get_city_average(df, parameters)
     return get_indicator_health_scores(avg_row, parameters)
+
+
+# ============================================================
+# カテゴリ別集計
+# ------------------------------------------------------------
+# 評価項目が増えても「人口・世帯」「移動・生活環境」のような観点別の
+# 傾向を見られるよう、parameters に付いている category（category_id）で
+# 束ねて平均を取ります。カテゴリの名称・数はdata/category_master.csvで
+# 管理しているため、この関数自体はカテゴリが何個・何であっても変更不要です。
+# ============================================================
+def get_category_health_scores(row: pd.Series, parameters: Optional[Parameters] = None) -> list:
+    """
+    1地区分の行から、カテゴリ別の平均健全度スコア（0〜100、高いほど良い）を返します。
+    各カテゴリに属する評価項目の健全度スコアの単純平均です。
+    戻り値は [{"category_id", "label", "score", "param_count"}, ...]（スコアが低い順）。
+    """
+    from utils.category_loader import get_category_label
+
+    parameters = parameters if parameters is not None else load_active_parameters()
+    by_category: Dict[str, list] = {}
+    for param in parameters:
+        risk = _risk_value(row, param)
+        health = 100 - risk
+        by_category.setdefault(param.get("category", "other"), []).append(health)
+
+    result = []
+    for category_id, scores in by_category.items():
+        result.append({
+            "category_id": category_id,
+            "label": get_category_label(category_id),
+            "score": round(sum(scores) / len(scores), 1),
+            "param_count": len(scores),
+        })
+    result.sort(key=lambda c: c["score"])
+    return result
+
+
+def get_city_category_health_scores(df: pd.DataFrame, parameters: Optional[Parameters] = None) -> list:
+    """市全体（全地区平均）で見たときの、カテゴリ別の平均健全度スコアを返します。"""
+    parameters = parameters if parameters is not None else load_active_parameters()
+    avg_row = get_city_average(df, parameters)
+    return get_category_health_scores(avg_row, parameters)
+
+
+def get_category_breakdown_with_params(row: pd.Series, df: pd.DataFrame,
+                                        parameters: Optional[Parameters] = None) -> list:
+    """
+    地区詳細画面向けに、カテゴリごとに「カテゴリ健全度スコア」と
+    「そのカテゴリに属する評価項目の市平均との差」をまとめて返します。
+    ③確認候補を「カテゴリ単位の着目点」として見せるために使います。
+    戻り値は [{"category_id", "label", "score", "items": [get_indicator_status()の要素, ...]}, ...]
+    （スコアが低い＝確認候補になりやすい順）。
+    """
+    from utils.category_loader import get_category_label
+
+    parameters = parameters if parameters is not None else load_active_parameters()
+    status_list = get_indicator_status(row, df, parameters)
+    status_by_param_id = {s["param_id"]: s for s in status_list}
+
+    by_category: Dict[str, list] = {}
+    for param in parameters:
+        s = status_by_param_id.get(param["weight_key"])
+        if s is not None:
+            by_category.setdefault(param.get("category", "other"), []).append(s)
+
+    result = []
+    for category_id, items in by_category.items():
+        avg_score = round(sum(i["score"] for i in items) / len(items), 1)
+        result.append({
+            "category_id": category_id,
+            "label": get_category_label(category_id),
+            "score": avg_score,
+            "items": sorted(items, key=lambda i: i["score"]),
+        })
+    result.sort(key=lambda c: c["score"])
+    return result
 
 
 def get_indicator_status(target_row: pd.Series, df: pd.DataFrame, parameters: Optional[Parameters] = None) -> list:
