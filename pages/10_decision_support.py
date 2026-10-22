@@ -48,7 +48,9 @@ st.divider()
 st.subheader("2. 利用可能な資源を設定する")
 c1,c2=st.columns(2)
 with c1:budget=st.number_input("予算上限（円）",min_value=0,value=1000000,step=50000)
-with c2:staff=st.number_input("配置可能人数（人）",min_value=0,value=3,step=1)
+with c2:staff=st.number_input("配置可能人数（人）",min_value=0,value=3,step=1,key="staff_capacity_v19_8_fix")
+st.caption(f"現在の条件：予算 {budget:,} 円 ／ 配置可能人数 {staff} 人。入力後に Enter を押すと判定を更新します。")
+only_feasible = st.checkbox("条件を満たす施策だけ表示", value=False, key="policy_only_feasible")
 st.subheader("3. 費用・人員・想定到達人数を比較する")
 st.caption("表内で実施主体・時期・場所・頻度・期間・費用・必要人員を直接編集できます。費用は入力した実施期間全体の総額として扱います。")
 try:
@@ -59,7 +61,16 @@ try:
     result["人員内"]=result["必要人員（人・仮）"]<=staff
     result["条件を満たす"]=result["予算内"] & result["人員内"]
     result["到達1人当たり費用（仮）"]=(result["費用（円・仮）"]/result["仮の支援到達人数"].replace(0,float("nan"))).round(0)
-    st.dataframe(result,use_container_width=True,hide_index=True)
+    feasible_mask=result["条件を満たす"].fillna(False)
+    shortage_mask=(result["必要人員（人・仮）"]>staff).fillna(False)
+    m1,m2,m3=st.columns(3)
+    m1.metric("実施可能な施策数", f"{int(feasible_mask.sum())} / {len(result)} 件")
+    m2.metric("人員不足の施策数", f"{int(shortage_mask.sum())} 件")
+    m3.metric("配置可能人数", f"{staff} 人")
+    display_result=result.loc[feasible_mask] if only_feasible else result
+    st.dataframe(display_result,use_container_width=True,hide_index=True)
+    if only_feasible and display_result.empty:
+        st.info("現在の予算・人員の条件を満たす施策はありません。")
     st.subheader("4. 実施計画を組み合わせて比較する")
     st.caption("複数案を選択して、費用と必要人員の合計を試算します。同じ人員を複数施策で兼務できる場合は、実際の必要人数に修正してください。")
     selected_plans = st.multiselect("組み合わせる施策", result["施策案"].dropna().astype(str).tolist(), key=f"plan_selection_{district}_{issue}")
@@ -72,6 +83,10 @@ try:
     c2.metric("必要人員の単純合計（仮）", f"{total_people:,.0f} 人")
     c3.metric("到達人数の単純合計（仮）", f"{total_reach:,.1f} 人")
     if selected_plans:
+        remaining=staff-total_people if pd.notna(total_people) else None
+        if remaining is not None:
+            if remaining >= 0: st.info(f"選択した施策の配置可能人数の残り：{remaining:,.0f} 人")
+            else: st.warning(f"選択した施策は配置可能人数を {-remaining:,.0f} 人超過しています。")
         if pd.isna(total_cost) or pd.isna(total_people):
             st.warning("選択した施策に未入力の費用または人員があります。")
         elif total_cost <= budget and total_people <= staff:
