@@ -39,6 +39,7 @@ pages = [
     st.Page(str(PAGES_DIR / "7_data_management.py"), title="設定・データ管理", icon="⚙️"),
     st.Page(str(PAGES_DIR / "8_ai_consultation.py"), title="AI相談", icon="💬"),
     st.Page(str(PAGES_DIR / "9_city_analysis.py"), title="市全体分析", icon="🏙️"),
+    st.Page(str(PAGES_DIR / "10_decision_support.py"), title="施策検討", icon="🧭"),
 ]
 
 navigation = st.navigation(pages)

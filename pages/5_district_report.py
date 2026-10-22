@@ -22,6 +22,7 @@ district_report.py
 from __future__ import annotations
 
 import plotly.graph_objects as go
+import pandas as pd
 import streamlit as st
 
 from utils.config import COL_NAME, COL_RANK, COL_SCORE, COL_PRIORITY, PRIORITY_COLORS, COLOR_PRIMARY
@@ -55,6 +56,66 @@ row = scored_df[scored_df[COL_NAME] == target].iloc[0]
 status_list = get_indicator_status(row, scored_df, parameters)
 
 # ============================================================
+# District-first automatic summary: characteristics -> candidate actions
+# ============================================================
+from services.district_recommendations import build_district_recommendations
+
+st.markdown("## この地区の特徴と考えられる支援策")
+st.caption("地区を選ぶだけで、相対的な特徴と支援策候補を自動表示します。AI・APIキー不要。比較は読み込み中の地区データに基づきます。")
+st.warning("現在の標準データはデモ用の仮データです。数値の偏りだけで支援の必要性や個人の状況は断定できません。", icon="⚠️")
+summary = build_district_recommendations(target, row, scored_df)
+if summary["features"]:
+    st.markdown("**この地区の特徴（地区間の相対比較）**")
+    for feat in summary["features"]:
+        st.markdown(f"- {feat['text']}")
+else:
+    st.info("比較対象の39地区データから、設定した相対条件に該当する特徴は見つかりませんでした。")
+
+st.markdown("**特徴を根拠に検討できる支援策**")
+if summary["proposals"]:
+    for proposal in summary["proposals"]:
+        with st.container(border=True):
+            st.markdown(f"#### {proposal['title']}")
+            st.caption("提案の根拠：" + "、".join(x["key"] for x in proposal["evidence"]))
+            for action in proposal["actions"]:
+                st.markdown(f"- {action}")
+            with st.expander("施策を具体化する際の検討条件"):
+                st.write(proposal["considerations"])
+else:
+    st.info("条件に合う自動提案はありません。下の項目別分析から個別に検討できます。")
+
+if st.button("この地区の支援策を詳しく比較する →", type="primary", key="district_auto_to_policy"):
+    st.session_state["policy_target_district"] = target
+    st.switch_page("pages/10_decision_support.py")
+st.caption("※ 支援策は検討候補です。既存事業、利用条件、予算、人員などを踏まえて比較してください。")
+st.divider()
+
+# Relative comparisons use observed values in the currently loaded 39-district dataset.
+# They do not imply unmet needs, and the average is an unweighted district mean.
+def relative_indicator_view(value, series, risk_direction):
+    numbers = pd.to_numeric(series, errors="coerce").dropna()
+    if numbers.empty or pd.isna(value):
+        return {"label": "比較不可", "rank": "—", "mean": None, "diff": None, "count": 0, "position": None, "interpretation": "有効な比較データがありません"}
+    value = float(value)
+    n = len(numbers)
+    # rank 1 means largest observed value; ties share a rank.
+    rank = int((numbers > value).sum() + 1)
+    mean = float(numbers.mean())
+    diff = value - mean
+    if numbers.nunique() <= 1:
+        label = "全地区同程度"
+        position = 50.0
+    else:
+        # Quartile-based categories, rather than an invented clinical threshold.
+        q25, q75 = numbers.quantile([0.25, 0.75]).tolist()
+        label = "相対的に高い" if value > q75 else "相対的に低い" if value < q25 else "中間的"
+        position = 100.0 * (numbers.lt(value).sum() + 0.5 * numbers.eq(value).sum()) / n
+    meaning = ("数値が高いほどリスク方向" if risk_direction == "positive" else
+               "数値が低いほどリスク方向" if risk_direction == "negative" else "リスク方向は未設定")
+    return {"label": label, "rank": f"{rank}位 / {n}地区（数値の高い順）", "mean": mean, "diff": diff, "count": n, "position": position, "interpretation": meaning}
+
+
+# ============================================================
 # ① 地区基本情報
 # ============================================================
 st.markdown("## ① 地区基本情報")
@@ -70,21 +131,37 @@ c3.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown("**評価項目一覧（値・スコア）**")
-st.caption("評価項目は「評価項目管理」画面の登録内容から自動的に取得しています。項目を追加すると、ここにも自動的に表示されます。")
+st.markdown("**評価項目一覧（39地区内での位置づけ）**")
+st.caption("現在読み込まれている地区データで比較します。平均は地区ごとの単純平均（人口加重した市全体値ではありません）。高低は統計的な相対位置で、支援不足を断定するものではありません。")
 if status_list:
-    # 項目数が増えても横幅が潰れないよう、4項目ずつ複数行で表示する
-    ITEMS_PER_ROW = 4
+    ITEMS_PER_ROW = 3
+    param_by_id = {p["weight_key"]: p for p in parameters}
     for start in range(0, len(status_list), ITEMS_PER_ROW):
         chunk = status_list[start:start + ITEMS_PER_ROW]
-        basic_table_cols = st.columns(ITEMS_PER_ROW)
-        for col, s in zip(basic_table_cols, chunk):
-            unit = "%" if s["unit"] == "%" else (s["unit"] or "")
-            col.metric(
-                s["label"],
-                f"{s['value']:.1f}{unit}",
-                f"スコア {s['score']:.1f}点",
-            )
+        cols = st.columns(ITEMS_PER_ROW)
+        for col, item in zip(cols, chunk):
+            param = param_by_id.get(item["param_id"], {})
+            key = param.get("key")
+            values = scored_df[key] if key in scored_df.columns else pd.Series(dtype=float)
+            comparison = relative_indicator_view(item["value"], values, item.get("risk_direction"))
+            unit = item.get("unit") or ""
+            with col:
+                with st.container(border=True):
+                    st.markdown(f"**{item['label']}**")
+                    st.metric("地区の値", f"{item['value']:.1f}{unit}")
+                    st.markdown(f"**{comparison['label']}**")
+                    st.caption(comparison["rank"])
+                    if comparison["mean"] is not None:
+                        st.caption(f"地区平均 {comparison['mean']:.1f}{unit} ／ 平均差 {comparison['diff']:+.1f}{unit}")
+                    if comparison["position"] is not None:
+                        st.progress(max(0.0, min(1.0, comparison["position"] / 100)), text="39地区内の数値の位置（右ほど高い）")
+                    st.caption(comparison["interpretation"])
+
+st.markdown("### 次のステップ：この地区の施策を検討")
+st.caption("分析結果を確認した後、施策の費用・人員・想定効果を比較できます。")
+if st.button("この地区の施策を検討する →", type="primary", key="district_to_policy"):
+    st.session_state["policy_target_district"] = target
+    st.switch_page("pages/10_decision_support.py")
 
 st.markdown("---")
 
@@ -107,10 +184,14 @@ for category_id in dict.fromkeys(p.get("category", "other") for p in all_paramet
         for p in cat_params:
             value = row[p["key"]]
             avg = raw_df[p["key"]].mean() if p["key"] in raw_df.columns else None
+            comparison = relative_indicator_view(value, raw_df[p["key"]] if p["key"] in raw_df.columns else pd.Series(dtype=float), p.get("risk_direction"))
             profile_rows.append({
                 "項目": p["label"],
                 "地区値": round(float(value), 1),
-                "市内平均": round(float(avg), 1) if avg is not None else None,
+                "地区平均": round(float(avg), 1) if avg is not None else None,
+                "平均との差": round(comparison["diff"], 1) if comparison["diff"] is not None else None,
+                "相対評価": comparison["label"],
+                "数値の高い順": comparison["rank"],
                 "単位": p["unit"],
                 "用途": "着目度計算" if p["active"] else "参考表示",
                 "データ種別": p["data_type"],
