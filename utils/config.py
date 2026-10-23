@@ -20,19 +20,19 @@ from pathlib import Path
 # ============================================================
 # アプリのバージョン表示（サイドバー下部に表示）
 # ============================================================
-APP_VERSION = "v18.0"
+APP_VERSION = "v23.0 (39地区・実データ)"
 
 APP_TITLE = "地域見守り意思決定支援システム"
 
 # 画面上部に常に表示する説明文
 SYSTEM_DISCLAIMER = (
-    "本システムは公開統計データを用いて地域単位の見守りニーズ・施策検討を支援するシステムです。"
+    "本システムは一部の公開統計とデモ値を用いて地域単位の見守りニーズ・施策検討を試行するシステムです。"
     "個人の見守り必要性を判定するものではありません。"
 )
 
 # 画面下部に常に表示する限界・注意事項
 SYSTEM_LIMITATIONS = [
-    "公開統計データを基にしています。",
+    "要介護認定率以外の評価指標はデモ値です。",
     "地域全体の傾向を示す参考情報です。",
     "個人を判定するものではありません。",
     "最終判断は自治体職員が行います。",
@@ -93,7 +93,7 @@ COLOR_TEXT_SUB = "#6b7280"
 # データファイルのパス
 # ============================================================
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CSV_PATH = PROJECT_ROOT / "data" / "sample_data.csv"
+DEFAULT_CSV_PATH = PROJECT_ROOT / "data" / "official_partial_39districts.csv"
 PARAMETER_MASTER_PATH = PROJECT_ROOT / "data" / "parameter_master.csv"
 CATEGORY_MASTER_PATH = PROJECT_ROOT / "data" / "category_master.csv"
 POLICY_MASTER_PATH = PROJECT_ROOT / "data" / "policy_master.csv"
@@ -102,6 +102,6 @@ PATTERNS_PATH = PROJECT_ROOT / "data" / "patterns.json"
 # ============================================================
 # データ出典・対象年度・更新日（標準データ用の初期値）
 # ============================================================
-DATA_SOURCE_NAME = "宇都宮市 公開統計データ（サンプル・デモ用）"
-DATA_TARGET_YEAR = "令和7年度"
-DATA_UPDATED_AT = "2026-04-01"
+DATA_SOURCE_NAME = "宇都宮市 地域別データ分析ブック（要介護認定率のみ実データ／その他はデモ値）"
+DATA_TARGET_YEAR = "要介護認定率：令和3年度KDB／その他：デモ値"
+DATA_UPDATED_AT = "2026-10-23"

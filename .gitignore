@@ -19,3 +19,9 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local conversations and approved municipal knowledge
+local_data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

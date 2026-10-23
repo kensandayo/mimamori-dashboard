@@ -1,0 +1,458 @@
+# -*- coding: utf-8 -*-
+"""
+district_report.py
+---------------------
+地区詳細画面です。以下の順で表示します。
+
+① 地区基本情報（地区名・総合スコア・順位・各評価項目の値とスコア）
+② 主な着目点（カテゴリ別）（データ→特徴→着目点→施策候補→提案理由の流れで、
+   カテゴリ単位の傾向をまとめて提示。単一項目ではなく複数項目の組み合わせから
+   見える特徴を示す、意思決定支援のための要約ビュー）
+③ 評価項目別の状況（現在値・スコア・市内平均との比較・市内順位、レーダー/棒グラフ）
+④ 確認候補（項目単位。スコアをもとに、確認・改善を検討する候補となる項目。断定はしない）
+⑤ 関連する施策事例（項目単位。他自治体施策マスタと連携。参考情報として提示）
+
+このシステムは「この地区にはこの施策が必要」と断定するものではなく、
+自治体職員が施策を検討する際の参考情報を提示するものです。
+
+地域マップから「この地区の詳細を見る」で遷移してきた場合は、
+その地区が自動的に選択されます。
+"""
+
+from __future__ import annotations
+
+import plotly.graph_objects as go
+import pandas as pd
+import streamlit as st
+
+from utils.config import COL_NAME, COL_RANK, COL_SCORE, COL_PRIORITY, PRIORITY_COLORS, COLOR_PRIMARY
+from utils.state import get_raw_data, get_scored_data, get_weights
+from utils.parameter_loader import load_active_parameters, load_all_parameters
+from utils.patterns import load_patterns
+from utils.scoring import (
+    get_city_average, get_city_health_scores, get_contribution_breakdown, get_indicator_status,
+    get_policy_candidates, build_policy_reason, generate_analysis_comments, calculate_scores,
+    get_category_breakdown_with_params,
+)
+from components.header import render_header, render_footer
+from components.charts import build_diff_bar_chart, build_health_score_bar, build_radar_chart
+
+st.title("地区詳細")
+render_header(page_caption="地区を選択すると、評価項目別の状況・確認候補・関連する施策事例を確認できます。")
+
+scored_df = get_scored_data()
+raw_df = get_raw_data()
+weights = get_weights()
+parameters = load_active_parameters()
+city_avg = get_city_average(scored_df, parameters)
+city_health_by_param = {h["param_id"]: h["score"] for h in get_city_health_scores(scored_df, parameters)}
+
+district_names = scored_df[COL_NAME].tolist()
+jump_target = st.session_state.pop("jump_to_district", None)
+default_index = district_names.index(jump_target) if jump_target in district_names else 0
+
+target = st.selectbox("詳細を見る地区を選んでください", options=district_names, index=default_index)
+row = scored_df[scored_df[COL_NAME] == target].iloc[0]
+status_list = get_indicator_status(row, scored_df, parameters)
+
+# ============================================================
+# District-first automatic summary: characteristics -> candidate actions
+# ============================================================
+from services.district_recommendations import build_district_recommendations
+
+st.markdown("## この地区の特徴と考えられる支援策")
+st.caption("地区を選ぶだけで、相対的な特徴と支援策候補を自動表示します。AI・APIキー不要。比較は読み込み中の地区データに基づきます。")
+st.warning("現在の標準データはデモ用の仮データです。数値の偏りだけで支援の必要性や個人の状況は断定できません。", icon="⚠️")
+summary = build_district_recommendations(target, row, scored_df)
+if summary["features"]:
+    st.markdown("**この地区の特徴（地区間の相対比較）**")
+    for feat in summary["features"]:
+        st.markdown(f"- {feat['text']}")
+else:
+    st.info("比較対象の39地区データから、設定した相対条件に該当する特徴は見つかりませんでした。")
+
+st.markdown("**特徴を根拠に検討できる支援策**")
+if summary["proposals"]:
+    for proposal in summary["proposals"]:
+        with st.container(border=True):
+            st.markdown(f"#### {proposal['title']}")
+            st.caption("提案の根拠：" + "、".join(x["key"] for x in proposal["evidence"]))
+            for action in proposal["actions"]:
+                st.markdown(f"- {action}")
+            with st.expander("施策を具体化する際の検討条件"):
+                st.write(proposal["considerations"])
+else:
+    st.info("条件に合う自動提案はありません。下の項目別分析から個別に検討できます。")
+
+if st.button("この地区の支援策を詳しく比較する →", type="primary", key="district_auto_to_policy"):
+    st.session_state["policy_target_district"] = target
+    st.switch_page("pages/10_decision_support.py")
+st.caption("※ 支援策は検討候補です。既存事業、利用条件、予算、人員などを踏まえて比較してください。")
+st.divider()
+
+# Relative comparisons use observed values in the currently loaded 39-district dataset.
+# They do not imply unmet needs, and the average is an unweighted district mean.
+def relative_indicator_view(value, series, risk_direction):
+    numbers = pd.to_numeric(series, errors="coerce").dropna()
+    if numbers.empty or pd.isna(value):
+        return {"label": "比較不可", "rank": "—", "mean": None, "diff": None, "count": 0, "position": None, "interpretation": "有効な比較データがありません"}
+    value = float(value)
+    n = len(numbers)
+    # rank 1 means largest observed value; ties share a rank.
+    rank = int((numbers > value).sum() + 1)
+    mean = float(numbers.mean())
+    diff = value - mean
+    if numbers.nunique() <= 1:
+        label = "全地区同程度"
+        position = 50.0
+    else:
+        # Quartile-based categories, rather than an invented clinical threshold.
+        q25, q75 = numbers.quantile([0.25, 0.75]).tolist()
+        label = "相対的に高い" if value > q75 else "相対的に低い" if value < q25 else "中間的"
+        position = 100.0 * (numbers.lt(value).sum() + 0.5 * numbers.eq(value).sum()) / n
+    meaning = ("数値が高いほどリスク方向" if risk_direction == "positive" else
+               "数値が低いほどリスク方向" if risk_direction == "negative" else "リスク方向は未設定")
+    return {"label": label, "rank": f"{rank}位 / {n}地区（数値の高い順）", "mean": mean, "diff": diff, "count": n, "position": position, "interpretation": meaning}
+
+
+# ============================================================
+# ① 地区基本情報
+# ============================================================
+st.markdown("## ① 地区基本情報")
+
+priority_color = PRIORITY_COLORS.get(row[COL_PRIORITY], COLOR_PRIMARY)
+st.markdown(f"### {target}")
+c1, c2, c3 = st.columns(3)
+c1.metric("総合スコア", f"{row[COL_SCORE]:.1f} 点", f"{row[COL_SCORE] - city_avg[COL_SCORE]:+.1f}（対平均）")
+c2.metric("順位", f"{int(row[COL_RANK])} 位 / {len(scored_df)}地区")
+c3.markdown(
+    f"""<div style="padding-top:8px;"><span style="font-size:13px; color:#6b7280;">着目度</span><br>
+    <span style="font-size:22px; font-weight:700; color:{priority_color};">{row[COL_PRIORITY]}</span></div>""",
+    unsafe_allow_html=True,
+)
+
+st.markdown("**評価項目一覧（39地区内での位置づけ）**")
+st.caption("現在読み込まれている地区データで比較します。平均は地区ごとの単純平均（人口加重した市全体値ではありません）。高低は統計的な相対位置で、支援不足を断定するものではありません。")
+if status_list:
+    ITEMS_PER_ROW = 3
+    param_by_id = {p["weight_key"]: p for p in parameters}
+    for start in range(0, len(status_list), ITEMS_PER_ROW):
+        chunk = status_list[start:start + ITEMS_PER_ROW]
+        cols = st.columns(ITEMS_PER_ROW)
+        for col, item in zip(cols, chunk):
+            param = param_by_id.get(item["param_id"], {})
+            key = param.get("key")
+            values = scored_df[key] if key in scored_df.columns else pd.Series(dtype=float)
+            comparison = relative_indicator_view(item["value"], values, item.get("risk_direction"))
+            unit = item.get("unit") or ""
+            with col:
+                with st.container(border=True):
+                    st.markdown(f"**{item['label']}**")
+                    st.metric("地区の値", f"{item['value']:.1f}{unit}")
+                    st.markdown(f"**{comparison['label']}**")
+                    st.caption(comparison["rank"])
+                    if comparison["mean"] is not None:
+                        st.caption(f"地区平均 {comparison['mean']:.1f}{unit} ／ 平均差 {comparison['diff']:+.1f}{unit}")
+                    if comparison["position"] is not None:
+                        st.progress(max(0.0, min(1.0, comparison["position"] / 100)), text="39地区内の数値の位置（右ほど高い）")
+                    st.caption(comparison["interpretation"])
+
+st.markdown("### 次のステップ：この地区の施策を検討")
+st.caption("分析結果を確認した後、施策の費用・人員・想定効果を比較できます。")
+if st.button("この地区の施策を検討する →", type="primary", key="district_to_policy"):
+    st.session_state["policy_target_district"] = target
+    st.switch_page("pages/10_decision_support.py")
+
+st.markdown("---")
+
+# ============================================================
+# 地域カルテ（分析ブック参考の全指標）
+# ============================================================
+st.markdown("## 地域カルテ（参考指標を含む）")
+st.caption(
+    "宇都宮市の地域別データ分析ブックを参考に、スコア計算に使わない参考指標も含めて一覧化しています。"
+    "現在の標準データに追加した指標はデモ用の仮データであり、宇都宮市の実測値ではありません。"
+)
+all_parameters = load_all_parameters()
+from utils.category_loader import get_category_label
+for category_id in dict.fromkeys(p.get("category", "other") for p in all_parameters):
+    cat_params = [p for p in all_parameters if p.get("category", "other") == category_id and p["key"] in row.index]
+    if not cat_params:
+        continue
+    with st.expander(get_category_label(category_id), expanded=(category_id in ["population", "mobility_env", "social_ties"])):
+        profile_rows = []
+        for p in cat_params:
+            value = row[p["key"]]
+            avg = raw_df[p["key"]].mean() if p["key"] in raw_df.columns else None
+            comparison = relative_indicator_view(value, raw_df[p["key"]] if p["key"] in raw_df.columns else pd.Series(dtype=float), p.get("risk_direction"))
+            profile_rows.append({
+                "項目": p["label"],
+                "地区値": round(float(value), 1),
+                "地区平均": round(float(avg), 1) if avg is not None else None,
+                "平均との差": round(comparison["diff"], 1) if comparison["diff"] is not None else None,
+                "相対評価": comparison["label"],
+                "数値の高い順": comparison["rank"],
+                "単位": p["unit"],
+                "用途": "着目度計算" if p["active"] else "参考表示",
+                "データ種別": p["data_type"],
+            })
+        st.dataframe(profile_rows, use_container_width=True, hide_index=True)
+
+st.markdown("---")
+
+# ============================================================
+# ② 主な着目点（カテゴリ別）
+# ------------------------------------------------------------
+# 「データ → 特徴 → 着目点 → 施策候補 → 提案理由」の流れで、
+# 単一の評価項目ではなくカテゴリ単位（人口・世帯／社会的つながり…）で
+# 見える特徴をまとめます。断定はせず、あくまで確認・検討の出発点としての
+# 参考情報です。
+# ============================================================
+st.markdown("## ② 主な着目点（カテゴリ別）")
+st.caption(
+    "評価項目をカテゴリ単位で束ね、市平均と比較して特徴的な組み合わせが見られるカテゴリを提示します。"
+    "「このカテゴリに対応が必要」と断定するものではなく、複数の関連指標から見える傾向を確認するための参考情報です。"
+)
+
+category_breakdown = get_category_breakdown_with_params(row, scored_df, parameters)
+top_categories = [c for c in category_breakdown if c["score"] < 70][:2]
+
+if not top_categories:
+    st.success("すべてのカテゴリが70点以上であり、特に着目すべきカテゴリは見当たりません。")
+else:
+    for c in top_categories:
+        with st.container(border=True):
+            st.markdown(f"#### 着目点：{c['label']}")
+
+            # ---- データ・特徴 ----
+            st.markdown("**データ・特徴**（市平均との比較）")
+            feature_lines = []
+            for item in c["items"]:
+                diff = item["diff"]
+                if abs(diff) < 1:
+                    continue
+                if item["risk_direction"] == "positive":
+                    direction = "市平均より高い" if diff > 0 else "市平均より低い"
+                else:
+                    direction = "市平均より低い（弱い）" if diff < 0 else "市平均より高く、良好"
+                feature_lines.append(f"・{item['label']}：{direction}（{diff:+.1f}）")
+            if feature_lines:
+                for line in feature_lines:
+                    st.write(line)
+            else:
+                st.caption("市平均から大きく外れた項目はありませんが、カテゴリ全体としてはスコアが相対的に低い状況です。")
+
+            # ---- 施策候補 ----
+            st.markdown("**施策候補**")
+            candidates = get_policy_candidates(c["items"], limit_per_param=3)
+            seen_policy_names = set()
+            policy_lines = []
+            for item in c["items"]:
+                for policy in candidates.get(item["param_id"], []):
+                    key = (policy.get("municipality"), policy.get("policy_name"))
+                    if key in seen_policy_names:
+                        continue
+                    seen_policy_names.add(key)
+                    pref = policy.get("prefecture", "")
+                    policy_lines.append(f"・{policy['policy_name']}（{pref} {policy['municipality']}）")
+            if policy_lines:
+                for line in policy_lines[:5]:
+                    st.write(line)
+            else:
+                st.caption("現在、このカテゴリに対応する参考事例は登録されていません。")
+
+            # ---- 提案理由 ----
+            st.markdown("**提案理由**")
+            reason_parts = [f"「{c['label']}」のカテゴリ平均スコアが{c['score']:.1f}点で、他カテゴリと比べても確認候補になっているため"]
+            if feature_lines:
+                reason_parts.append("特に" + "、".join(item["label"] for item in c["items"] if abs(item["diff"]) >= 1)
+                                     + "の指標に特徴が見られるため")
+            st.write("。また、".join(reason_parts) + "。")
+
+            st.caption("※ 上記は自動集計に基づく参考情報です。実際の施策検討では、地域の状況・既存サービス・住民ニーズ等を合わせて確認してください。")
+
+    st.info("上記のカテゴリ別の着目点は、次の「③ 評価項目別の状況」以降で項目単位の詳細を確認できます。", icon="ℹ️")
+
+st.markdown("---")
+
+# ============================================================
+# ③ 評価項目別の状況
+# ============================================================
+st.markdown("## ③ 評価項目別の状況")
+st.caption("現在値・スコア（高いほど良い共通スケール）・市内平均との比較・市内順位をまとめています。")
+
+status_table = [{
+    "評価項目": s["label"],
+    "現在値": round(s["value"], 1),
+    "スコア": s["score"],
+    "市内平均との差": round(s["diff"], 1),
+    "市内順位": f"{s['rank']} / {s['total_count']}",
+} for s in status_list]
+st.dataframe(status_table, use_container_width=True, hide_index=True)
+
+chart_col1, chart_col2 = st.columns(2)
+with chart_col1:
+    st.plotly_chart(
+        build_diff_bar_chart([s["label"] for s in status_list], [s["diff"] for s in status_list],
+                             title="市平均との差"),
+        use_container_width=True,
+    )
+with chart_col2:
+    axes = [(p["label"], p["key"]) for p in parameters]
+    st.plotly_chart(
+        build_radar_chart([{"name": target, "row": row}, {"name": "市内平均", "row": city_avg}], axes),
+        use_container_width=True,
+    )
+
+st.markdown("---")
+
+# ============================================================
+# ④ 確認候補
+# ============================================================
+st.markdown("## ④ 確認候補")
+st.caption(
+    "評価項目を「高いほど良い」共通スケール（0〜100点）で比較し、点数が相対的に低い項目を"
+    "確認候補として表示しています。特定の対応が必要と判定するものではありません。"
+)
+
+sorted_status = sorted(status_list, key=lambda s: s["score"])
+confirm_candidates = [s for s in sorted_status if s["score"] < 70][:3]
+
+st.plotly_chart(
+    build_health_score_bar([s["label"] for s in sorted_status], [s["score"] for s in sorted_status]),
+    use_container_width=True,
+)
+
+if not confirm_candidates:
+    st.success("すべての評価項目が70点以上であり、特に確認候補となる項目は見当たりません。")
+else:
+    for i, s in enumerate(confirm_candidates, start=1):
+        city_score = city_health_by_param.get(s["param_id"])
+        city_score_text = f"{city_score:.1f}点" if city_score is not None else "算出不可"
+        st.markdown(f"**{i}. {s['label']}**")
+        st.write(f"　スコア：{s['score']:.1f}点　／　市内平均：{city_score_text}")
+        st.write(f"　→ {s['label']}について確認する余地があります。")
+
+st.markdown("---")
+
+# ============================================================
+# ⑤ 関連する施策事例
+# ============================================================
+st.markdown("## ⑤ 関連する施策事例")
+if not confirm_candidates:
+    st.caption("現時点で確認候補となる評価項目がないため、関連する施策事例の表示はありません。")
+else:
+    candidates = get_policy_candidates(confirm_candidates)
+    for s in confirm_candidates:
+        policies = candidates.get(s["param_id"], [])
+        st.markdown(f"#### {s['label']}に関連する参考事例")
+
+        if not policies:
+            st.caption("現在、この評価項目に対応する参考事例は登録されていません。")
+            continue
+
+        st.caption(
+            f"この地区では「{s['label']}」が確認候補として抽出されているため、関連する他自治体の"
+            "取り組みを参考情報として表示しています。この情報だけで施策の必要性や導入の適否を判断するものではありません。"
+        )
+
+        for policy in policies:
+            with st.container(border=True):
+                pref = policy.get("prefecture", "")
+                st.markdown(f"**{pref} {policy['municipality']}：{policy['policy_name']}**")
+                st.write(policy.get("description", policy.get("summary", "")))
+                st.caption(f"対象：{policy['target']}")
+                if policy.get("cost"):
+                    st.write(f"💰 料金：{policy['cost']}")
+                if policy.get("frequency"):
+                    st.write(f"🔁 利用回数・頻度：{policy['frequency']}")
+                if policy.get("features"):
+                    st.write(f"📝 特徴：{policy['features']}")
+
+                with st.expander("表示理由を見る"):
+                    st.write(
+                        f"この地区では「{s['label']}」の評価が市内平均と比較して低いため、"
+                        "関連する他自治体の事例を参考情報として表示しています。"
+                    )
+                    for reason_line in build_policy_reason(row, scored_df, s):
+                        st.write(f"・{reason_line}")
+                    st.warning(
+                        "この評価だけで施策の必要性を判断するものではありません。実際の施策検討では、"
+                        "地域の状況・既存サービス・利用実績・住民ニーズ等を合わせて確認する必要があります。",
+                        icon="⚠️",
+                    )
+
+                url = policy.get("url") or policy.get("official_url")
+                if url:
+                    st.markdown(f"[自治体公式ページを確認]({url})")
+                updated = policy.get("updated_at") or policy.get("last_checked", "未確認")
+                st.caption(f"情報確認日：{updated}　／　情報源：{policy.get('source', '自治体公式Webサイト')}"
+                          "（掲載情報は変更されている場合があるため、検討時は必ず公式情報をご確認ください）")
+
+        if len(policies) >= 2:
+            with st.expander(f"「{s['label']}」の事例を比較する"):
+                compare_rows = [{
+                    "自治体": f"{p.get('prefecture', '')} {p['municipality']}",
+                    "施策名": p["policy_name"],
+                    "対象": p["target"],
+                    "料金": p.get("cost") or "—",
+                    "利用回数": p.get("frequency") or "—",
+                    "特徴": p.get("features") or "—",
+                } for p in policies]
+                st.dataframe(compare_rows, use_container_width=True, hide_index=True)
+        st.write("")
+
+    st.info("上記は他自治体での実施例をもとにした参考情報であり、宇都宮市への導入を推奨するものではありません。", icon="ℹ️")
+
+st.markdown("---")
+
+# ============================================================
+# （既存）スコア内訳
+# ============================================================
+st.markdown("### スコア内訳（各評価項目の寄与点）")
+breakdown = get_contribution_breakdown(row, weights, parameters)
+fig = go.Figure(go.Bar(
+    x=[b["contribution"] for b in breakdown], y=[b["label"] for b in breakdown], orientation="h",
+    marker_color=COLOR_PRIMARY, text=[f"{b['contribution']:.1f}点" for b in breakdown], textposition="outside",
+))
+fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=260, xaxis_title="寄与点")
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("---")
+
+# ============================================================
+# （既存）自動分析コメント
+# ============================================================
+st.markdown("### 自動分析コメント")
+st.caption("※ AIによる判定ではなく、あらかじめ決めたルールに基づく機械的な差分説明です。")
+for comment in generate_analysis_comments(row, scored_df, parameters):
+    st.write(f"・{comment}")
+
+st.markdown("---")
+
+# ============================================================
+# （既存）評価パターン比較
+# ============================================================
+st.markdown("### 評価パターン比較")
+st.caption("重視する観点（評価パターン）を変えた場合に、この地区の総合スコアがどう変わるかを比較できます。")
+patterns = load_patterns()
+if not patterns:
+    st.caption("保存された評価パターンがありません。「設定・データ管理」画面で作成できます。")
+else:
+    pattern_cols = st.columns(len(patterns))
+    for col, (name, pattern) in zip(pattern_cols, patterns.items()):
+        pattern_scored = calculate_scores(raw_df, pattern["weights"], parameters)
+        pattern_row = pattern_scored[pattern_scored[COL_NAME] == target].iloc[0]
+        with col:
+            st.metric(name, f"{pattern_row[COL_SCORE]:.1f} 点", f"{int(pattern_row[COL_RANK])}位")
+
+st.markdown("---")
+
+with st.expander("各評価項目の説明・出典を見る"):
+    for p in parameters:
+        st.markdown(f"**{p['label']}**（{p['unit']}）")
+        st.write(p["description"])
+        st.caption(f"出典：{p['source']}")
+        st.write("")
+
+render_footer()
