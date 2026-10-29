@@ -1,0 +1,104 @@
+# -*- coding: utf-8 -*-
+"""
+4_📋_地区レポート.py
+----------------------
+地区を1つ選ぶと、総合スコア・順位・平均との差・スコア内訳・
+判定理由・推奨施策をまとめて確認できるレポート画面です。
+"""
+
+import streamlit as st
+import plotly.graph_objects as go
+
+from utils.config import APP_TITLE, COL_NAME, COL_RANK, COL_SCORE, COL_PRIORITY, INDICATORS, PRIORITY_COLORS
+from utils.state import init_state, get_scored_data, get_weights
+from utils.scoring import get_city_average, get_contribution_breakdown, generate_reasons, generate_recommendations
+from components.header import render_header, render_footer
+
+st.set_page_config(page_title=f"地区レポート | {APP_TITLE}", page_icon="📋", layout="wide")
+init_state()
+
+st.title("📋 地区レポート")
+render_header()
+
+scored_df = get_scored_data()
+weights = get_weights()
+city_avg = get_city_average(scored_df)
+
+target = st.selectbox("レポートを見る地区を選んでください", options=scored_df[COL_NAME].tolist())
+row = scored_df[scored_df[COL_NAME] == target].iloc[0]
+
+# ------------------------------------------------------------
+# サマリー
+# ------------------------------------------------------------
+priority_color = PRIORITY_COLORS.get(row[COL_PRIORITY], "#457b9d")
+st.markdown(f"## {target}")
+c1, c2, c3 = st.columns(3)
+c1.metric("■ 総合スコア", f"{row[COL_SCORE]:.1f} 点", f"{row[COL_SCORE] - city_avg[COL_SCORE]:+.1f} (対平均)")
+c2.metric("■ 順位", f"{int(row[COL_RANK])} 位 / {len(scored_df)}地区")
+c3.markdown(
+    f"""
+    <div style="padding-top:8px;">
+        <span style="font-size:13px; color:#556;">■ 優先度</span><br>
+        <span style="font-size:22px; font-weight:700; color:{priority_color};">{row[COL_PRIORITY]}</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown("---")
+
+# ------------------------------------------------------------
+# スコア内訳（各指標が何点寄与しているか）
+# ------------------------------------------------------------
+st.markdown("### ■ スコア内訳（各指標の寄与点）")
+breakdown = get_contribution_breakdown(row, weights)
+
+fig = go.Figure(go.Bar(
+    x=[b["contribution"] for b in breakdown],
+    y=[b["label"] for b in breakdown],
+    orientation="h",
+    marker_color="#1d4e89",
+    text=[f"{b['contribution']:.1f}点" for b in breakdown],
+    textposition="outside",
+))
+fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=280, xaxis_title="寄与点")
+st.plotly_chart(fig, use_container_width=True)
+
+detail_cols = st.columns(len(breakdown))
+for col, b in zip(detail_cols, breakdown):
+    with col:
+        st.metric(b["label"], f"{b['raw_value']:.1f}{b['unit'] if b['unit'] == '%' else ''}", f"{b['contribution']:.1f}点 寄与")
+
+st.markdown("---")
+
+# ------------------------------------------------------------
+# 判定理由
+# ------------------------------------------------------------
+st.markdown("### ■ 判定理由")
+for reason in generate_reasons(row, scored_df):
+    st.write(f"・{reason}")
+
+st.markdown("---")
+
+# ------------------------------------------------------------
+# 推奨施策
+# ------------------------------------------------------------
+st.markdown("### ■ 推奨施策")
+for rec in generate_recommendations(row, scored_df, weights):
+    st.write(f"✅ {rec}")
+
+st.caption("※ 推奨施策はルールベースで生成された参考案です。最終判断は自治体職員が行ってください。")
+
+st.markdown("---")
+
+# ------------------------------------------------------------
+# 各指標の説明・出典・更新日
+# ------------------------------------------------------------
+with st.expander("各指標の説明・出典・更新日を見る"):
+    for indicator in INDICATORS:
+        st.markdown(f"**{indicator['label']}**（{indicator['unit']}）")
+        st.write(indicator["description"])
+        st.caption(f"出典: {indicator['source']} ／ 更新日: {indicator['updated_at']}")
+        st.write("")
+
+render_footer()

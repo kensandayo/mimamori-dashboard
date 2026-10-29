@@ -1,37 +1,76 @@
-import streamlit as st
+"""What-if changes to published indicator values; no intervention effect prediction."""
 import pandas as pd
-from utils.active_weights import scored,score_caption
-st.title('施策シミュレーション')
-st.caption('以下は利用者が入力した仮定による容量・費用の試算です。政策効果の因果的な予測ではありません。')
-df=scored(); district=st.selectbox('対象地区',df.district.tolist()); r=df.set_index('district').loc[district]
-st.metric('現在の重みによる相対比較スコア',f"{r.weighted_score:.1f}" if pd.notna(r.weighted_score) else '算出不可')
-kind=st.selectbox('施策分野',['買い物支援','移動支援','介護・健康支援','地域交流','その他'])
-a,b=st.columns(2)
-with a:
- target=st.number_input('対象候補者数（仮定、人）',0,1000000,100,10)
- uptake=st.slider('想定利用率（%）',0,100,30)
- capacity=st.number_input('担当者1人が対応できる人数（仮定）',1,10000,10)
-with b:
- cost=st.number_input('利用者1人当たり月額変動費（円、仮定）',0,10000000,5000,1000)
- fixed=st.number_input('月額固定費（円、仮定）',0,100000000,0,10000)
- budget=st.number_input('月額予算上限（円、仮定）',0,1000000000,200000,10000)
- staff=st.number_input('確保可能な担当者数（人、仮定）',0,10000,3)
- demand=round(target*uptake/100)
- staff_cap=staff*capacity
- budget_cap=max(0,(budget-fixed)//cost) if cost else (1000000000 if budget>=fixed else 0)
- served=max(0,min(demand,staff_cap,budget_cap))
- needed=(demand+capacity-1)//capacity if demand else 0
- monthly=fixed+served*cost
- st1,st2,st3,st4=st.columns(4)
- st1.metric('想定利用希望者',f'{demand:,}人');st2.metric('予算・人員内で対応可能',f'{served:,}人');st3.metric('希望者全員への必要担当者',f'{needed:,}人');st4.metric('対応可能人数での月額費用',f'{monthly:,}円')
-if budget<fixed:st.warning('予算が固定費を下回っています。')
-if served<demand:st.warning(f'想定利用希望者に対し {demand-served:,} 人分の対応枠が不足します。')
-if cost==0:st.info('変動費0円の仮定です。実際の人件費・設備費などを含むか確認してください。')
-scenario={'地区':district,'施策分野':kind,'対象候補者_仮定':target,'想定利用率_pct':uptake,'想定利用希望者':demand,'担当者1人当たり対応人数_仮定':capacity,'確保可能担当者_仮定':staff,'月額固定費_仮定':fixed,'利用者当たり月額変動費_仮定':cost,'月額予算上限_仮定':budget,'対応可能人数_試算':served,'必要担当者_試算':needed,'月額費用_試算':monthly}
-if 'scenario_v26' not in st.session_state:st.session_state.scenario_v26=[]
-if st.button('この試算を比較表に追加'):st.session_state.scenario_v26.append(scenario);st.success('比較表に追加しました')
-if st.session_state.scenario_v26:
- st.subheader('保存した試算の比較（このセッション内）');st.dataframe(pd.DataFrame(st.session_state.scenario_v26),use_container_width=True,hide_index=True)
- st.download_button('試算CSVを保存',pd.DataFrame(st.session_state.scenario_v26).to_csv(index=False).encode('utf-8-sig'),'scenario_comparison.csv','text/csv')
- if st.button('試算一覧をクリア'):st.session_state.scenario_v26=[];st.rerun()
+import streamlit as st
+import plotly.graph_objects as go
+from utils.official import load, LABELS
+from utils.active_weights import get_weights, score_caption
+from utils.weighted_official import calculate, METRICS
+
+st.title('データシミュレーション')
+st.caption('指標の値を仮に変えた場合、見守り優先度スコアや順位がどう変化するかを試します。実際の施策効果を予測するものではありません。')
+original = load()
+weights = get_weights()
+baseline = calculate(weights, original)
+districts = original['district'].tolist()
+district = st.selectbox('対象地区', districts)
+editable = [k for k in ('aging_rate_pct','late_elderly_rate_pct','care_certification_rate_pct','age_85_plus_pct',
+                       'supermarkets_drugstores','hospitals_clinics','bus_stops','community_salons') if k in original.columns]
+active = [k for k in editable if (k in METRICS and weights.get(k,0)>0) or
+          (k+'_per_10k' in METRICS and weights.get(k+'_per_10k',0)>0)]
+if active:
+    st.caption('現在の評価パターンに使われている指標：' + '、'.join(LABELS.get(k,k) for k in active))
+else:
+    st.warning('現在の評価パターンで使用中の指標を確認してください。')
+selected_metrics = st.multiselect(
+    '仮に変更する指標（複数選択可）', editable,
+    default=[k for k in editable if k in active][:2] or editable[:2],
+    format_func=lambda k: LABELS.get(k,k), key='simulation_selected_metrics')
+if not selected_metrics:
+    st.info('変更する指標を1つ以上選択してください。')
+    st.stop()
+scenario = original.copy()
+changes = []
+for metric in selected_metrics:
+    current = original.loc[original['district']==district,metric].iloc[0]
+    if pd.isna(current):
+        st.warning(f'{LABELS.get(metric,metric)}：元データが欠損しているため変更対象から除外します。')
+        continue
+    current = float(current)
+    is_pct = metric.endswith('_pct')
+    label = LABELS.get(metric,metric)
+    if is_pct:
+        proposed = st.number_input(f'{label}：変更後（%）', min_value=0.0, max_value=100.0,
+                                   value=current, step=0.5, key=f'simulation_value_{district}_{metric}')
+    else:
+        proposed = st.number_input(f'{label}：変更後（件・箇所）', min_value=0, max_value=100000,
+                                   value=int(current), step=1, key=f'simulation_value_{district}_{metric}')
+    scenario.loc[scenario['district']==district,metric] = proposed
+    changes.append({'指標':label,'変更前':current,'変更後':float(proposed),
+                    '差分':float(proposed)-current,'現在の評価に使用': 'はい' if metric in active else 'いいえ'})
+if not changes:
+    st.warning('有効な変更対象がありません。')
+    st.stop()
+st.subheader('変更する指標の一覧')
+st.dataframe(pd.DataFrame(changes), hide_index=True, use_container_width=True)
+changed = calculate(weights, scenario)
+old_row = baseline.set_index('district').loc[district]
+new_row = changed.set_index('district').loc[district]
+old_score = old_row['weighted_score']; new_score = new_row['weighted_score']
+old_rank = baseline['weighted_score'].rank(ascending=False,method='min').loc[baseline['district']==district].iloc[0]
+new_rank = changed['weighted_score'].rank(ascending=False,method='min').loc[changed['district']==district].iloc[0]
+a,b,c = st.columns(3)
+a.metric('変更前の見守り優先度スコア',f'{old_score:.1f}' if pd.notna(old_score) else '算出不可')
+b.metric('変更後の見守り優先度スコア',f'{new_score:.1f}' if pd.notna(new_score) else '算出不可',
+         delta=f'{new_score-old_score:+.1f}点' if pd.notna(old_score) and pd.notna(new_score) else None,
+         delta_color='off')
+c.metric('39地区内の順位',f'{int(old_rank)}位 → {int(new_rank)}位' if pd.notna(old_rank) and pd.notna(new_rank) else '算出不可')
+if any(row['現在の評価に使用']=='いいえ' for row in changes):
+    st.info('現在の評価パターンに含まれない指標は、変更してもスコアに直接反映されません。')
+fig = go.Figure()
+fig.add_bar(name='変更前',x=['見守り優先度スコア'],y=[old_score],marker_color='#2C5C8F')
+fig.add_bar(name='変更後',x=['見守り優先度スコア'],y=[new_score],marker_color='#E8A33D')
+fig.update_layout(barmode='group',yaxis=dict(range=[0,100],title='スコア（点）'),height=320,margin=dict(l=10,r=10,t=15,b=15))
+st.plotly_chart(fig,use_container_width=True)
+st.caption('変更後は39地区全体で指標を再正規化し、同じ評価重みで再計算しています。そのため、対象地区以外の相対スコアや順位も変わる場合があります。')
+st.caption('この操作は画面上の仮定です。公式CSV・保存済みデータは変更されません。')
 score_caption()

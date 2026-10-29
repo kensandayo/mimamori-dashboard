@@ -1,0 +1,127 @@
+# -*- coding: utf-8 -*-
+"""
+6_⚙️_設定・データ管理.py
+--------------------------
+以下2つの機能を提供する画面です。
+
+1. スコア計算の重み変更（スライダー）→ 変更すると全ページが自動的に再計算される
+2. データ管理（CSVアップロード・画面上での編集・入力チェック・CSVダウンロード）
+"""
+
+import streamlit as st
+
+from utils.config import APP_TITLE, DEFAULT_WEIGHTS, REQUIRED_COLUMNS
+from utils.state import init_state, get_raw_data, set_raw_data, get_weights, set_weights
+from utils.data_loader import read_csv_file, dataframe_to_csv_bytes, generate_sample_data
+from utils.validation import validate_dataframe
+from components.header import render_header, render_footer
+
+st.set_page_config(page_title=f"設定・データ管理 | {APP_TITLE}", page_icon="⚙️", layout="wide")
+init_state()
+
+st.title("⚙️ 設定・データ管理")
+render_header()
+
+tab_weight, tab_data = st.tabs(["重みの設定", "データ管理（CSV）"])
+
+# ============================================================
+# 重みの設定
+# ============================================================
+with tab_weight:
+    st.markdown("#### スコア計算に使う重みを設定してください（合計が100%になるようにしてください）")
+    st.caption("重みを変更すると、ダッシュボード・地図・ランキングなど全ページのスコアが自動的に再計算されます。")
+
+    current_weights = get_weights()
+
+    w1 = st.slider("高齢化率の重み(%)", 0, 100, int(current_weights["aging"] * 100))
+    w2 = st.slider("単身高齢者割合の重み(%)", 0, 100, int(current_weights["single_elderly"] * 100))
+    w3 = st.slider("医療アクセスの重み(%)", 0, 100, int(current_weights["medical"] * 100))
+    w4 = st.slider("公共交通の重み(%)", 0, 100, int(current_weights["transport"] * 100))
+
+    total = w1 + w2 + w3 + w4
+    if total != 100:
+        st.error(f"現在の合計は {total}% です。合計が100%になるように調整してください。")
+    else:
+        st.success("合計は100%です。")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("この重みを適用する", type="primary", disabled=(total != 100)):
+            set_weights({
+                "aging": w1 / 100,
+                "single_elderly": w2 / 100,
+                "medical": w3 / 100,
+                "transport": w4 / 100,
+            })
+            st.success("重みを更新しました。他のページにも反映されます。")
+    with col_b:
+        if st.button("初期値（30/30/20/20）に戻す"):
+            set_weights(dict(DEFAULT_WEIGHTS))
+            st.success("重みを初期値に戻しました。")
+            st.rerun()
+
+# ============================================================
+# データ管理（CSVアップロード・編集・ダウンロード）
+# ============================================================
+with tab_data:
+    st.markdown("#### CSVアップロード")
+    st.caption(
+        "以下の列を持つCSVファイルをアップロードしてください: "
+        + "、".join(REQUIRED_COLUMNS)
+    )
+
+    uploaded_file = st.file_uploader("CSVファイルを選択", type=["csv"])
+
+    if uploaded_file is not None:
+        try:
+            new_df = read_csv_file(uploaded_file)
+            is_valid, errors = validate_dataframe(new_df)
+            if is_valid:
+                set_raw_data(new_df, source_name=f"アップロードデータ（{uploaded_file.name}）")
+                st.success("CSVを読み込み、データを更新しました。")
+            else:
+                st.error("CSVの内容に問題があります。以下のエラーを確認してください。")
+                for e in errors:
+                    st.write(f"❌ {e}")
+        except ValueError as e:
+            st.error(str(e))
+
+    st.markdown("---")
+    st.markdown("#### 画面上でデータを編集")
+    st.caption("表を直接編集できます。編集後は自動的に再計算・入力チェックが行われます。")
+
+    df = get_raw_data()
+    edited_df = st.data_editor(
+        df,
+        use_container_width=True,
+        num_rows="dynamic",
+        hide_index=True,
+        key="data_editor",
+    )
+
+    is_valid, errors = validate_dataframe(edited_df)
+    if not is_valid:
+        st.error("入力内容に以下の問題があります。修正してください（修正されるまで前回の正常なデータが使用されます）。")
+        for e in errors:
+            st.write(f"❌ {e}")
+    else:
+        if not edited_df.equals(df):
+            set_raw_data(edited_df)
+            st.success("編集内容を反映しました。")
+
+    st.markdown("---")
+    col_dl, col_reset = st.columns(2)
+    with col_dl:
+        st.download_button(
+            "📥 現在のデータをCSVでダウンロード",
+            data=dataframe_to_csv_bytes(get_raw_data()),
+            file_name="mimamori_data.csv",
+            mime="text/csv",
+        )
+    with col_reset:
+        if st.button("🔄 サンプルデータに戻す"):
+            set_raw_data(generate_sample_data(), source_name="サンプルデータ（デモ用ダミーデータ）")
+            st.success("サンプルデータに戻しました。")
+            st.rerun()
+
+render_footer()

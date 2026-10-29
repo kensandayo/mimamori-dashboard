@@ -14,8 +14,8 @@ METRICS = {
  'community_salons_per_10k': ('人口1万人当たり地域サロン数（少ない地区を重視）', 'low'),
 }
 
-def calculate(weights):
- df=derived(load())
+def calculate(weights, data=None):
+ df=derived(load() if data is None else data)
  active={k:float(v) for k,v in weights.items() if k in METRICS and float(v)>0}
  if not active: return df.assign(weighted_score=np.nan, coverage_pct=0.0)
  numerator=pd.Series(0.0,index=df.index)
