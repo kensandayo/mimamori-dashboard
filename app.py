@@ -27,6 +27,7 @@ page_defs = {
     'ranking': st.Page(str(p/'3_ranking.py'), title='ランキング', icon='📊'),
     'comparison': st.Page(str(p/'4_comparison.py'), title='地区比較', icon='📈'),
     'detail': st.Page(str(p/'5_district_report.py'), title='地区詳細', icon='📋'),
+    'ai': st.Page(str(p/'8_ai_consultation.py'), title='AIに聞く', icon='🤖'),
     'survey': st.Page(str(p/'12_survey_analysis.py'), title='アンケート分析', icon='📝'),
     'simulation': st.Page(str(p/'6_simulation.py'), title='データシミュレーション', icon='🔮'),
     'weights': st.Page(str(p/'11_weight_patterns.py'), title='評価重み・パターン', icon='⚖️'),
@@ -37,7 +38,7 @@ with st.sidebar:
     st.divider()
     st.page_link(page_defs['dashboard'], label='🏠 ダッシュボード', use_container_width=True)
     with st.expander('📊 分析', expanded=True):
-        for key in ('map', 'ranking', 'detail', 'comparison', 'survey', 'simulation'):
+        for key in ('map', 'ranking', 'detail', 'comparison', 'survey', 'simulation', 'ai'):
             st.page_link(page_defs[key], use_container_width=True)
     with st.expander('⚙️ 設定', expanded=False):
         for key in ('weights', 'data'):

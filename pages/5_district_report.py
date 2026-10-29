@@ -12,6 +12,9 @@ requested = st.session_state.pop('drill_detail_district', None)
 if requested in district_names:
     st.session_state['detail_district_choice'] = requested
 name=st.selectbox('地区',district_names,key='detail_district_choice');row=df.set_index('district').loc[name]
+if st.button('🤖 この地区についてAIに聞く',key='detail_ask_ai'):
+    st.session_state['drill_ai_district']=name
+    st.switch_page('pages/8_ai_consultation.py')
 a,b,c=st.columns(3);a.metric('人口',f"{int(row.population):,} 人");b.metric('高齢化率',f"{row.aging_rate_pct}%");c.metric('要介護認定率',f"{row.care_certification_rate_pct}%")
 st.dataframe(pd.DataFrame({'指標':[LABELS[k] for k in LABELS],'値':[row[k] for k in LABELS]}),hide_index=True,use_container_width=True)
 st.caption(f"出典: {row.source_pdf} / 人口基準: {row.population_reference} / 地域資源: {row.resource_reference}")
