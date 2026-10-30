@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from utils.official import LABELS
 
-RED = '#C74747'
+RED = '#D18B24'
 BLUE = '#3267B1'
 NEUTRAL = '#8292A5'
 
@@ -35,7 +35,7 @@ def comparison_frame(df, district, keys=None):
 
 def render_difference(df, district, key_prefix):
     st.markdown('#### 39地区平均との差')
-    st.caption('赤：39地区の単純平均より高い／青：低い。色は良し悪しや支援の必要性を表しません。')
+    st.caption('オレンジ：39地区の単純平均より高い／青：低い。色は良し悪しや支援の必要性を表しません。')
     data = comparison_frame(df, district)
     if data.empty:
         st.info('比較できる数値データがありません。')
@@ -54,13 +54,16 @@ def render_difference(df, district, key_prefix):
             text=[f'{v:+.1f}' for v in part['平均との差']], textposition='outside', cliponaxis=False,
         ))
         fig.add_vline(x=0, line_color='#8292A5', line_width=1)
-        fig.update_layout(height=max(210, 64 + len(part)*47), margin=dict(l=12,r=65,t=12,b=22),
+        fig.update_layout(height=max(240, 76 + len(part)*51), margin=dict(l=12,r=75,t=12,b=38),
+                          font=dict(size=14, color='#243445'),
+                          xaxis=dict(showgrid=True, gridcolor='#E0E7EF', zeroline=True, zerolinecolor='#8292A5', ticks='outside'),
+                          yaxis=dict(autorange='reversed', tickfont=dict(size=14)),
                           xaxis_title='平均との差（' + ('ポイント' if '割合' in title else '各指標の単位') + '）',
-                          yaxis=dict(autorange='reversed'), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True, key=f'{key_prefix}_{"rate" if "割合" in title else "count"}')
+                          showlegend=False)
+        st.plotly_chart(fig, use_container_width=False, width=850, key=f'{key_prefix}_{"rate" if "割合" in title else "count"}')
     view = data.drop(columns=['色']).copy()
     for col in ['地区値','39地区平均','平均との差']:
         view[col] = view[col].round(2)
-    st.dataframe(view, hide_index=True, use_container_width=True,
+    st.dataframe(view, hide_index=True, use_container_width=False, width=830,
                  column_config={'平均との差': st.column_config.NumberColumn(format='%+.2f')})
     st.caption('平均は39地区の単純平均です。人口加重の市全体値ではありません。施設件数・バス停数は地区面積や人口を考慮していないため、アクセスの良し悪しを直接示しません。')

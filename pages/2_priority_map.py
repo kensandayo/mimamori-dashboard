@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 from utils.active_weights import scored,score_caption
 st.title('地域マップ')
-st.caption('検証済みの地区代表点を使って表示します。代表点は地区境界ではありません。座標を捏造しません。')
+st.caption('検証済みの地区代表点を使って表示します。代表点は地区境界ではありません。座標を独自に調整しません。')
 df=scored()
 geo_path=Path(__file__).resolve().parent.parent/'data'/'district_coordinates.csv'
 geo=None
@@ -23,9 +23,9 @@ if geo is not None:
   st.write(f'座標確認済み: {len(joined)} / 39地区')
   if len(joined):
    st.map(joined,latitude='lat',longitude='lon',size=80)
-   st.dataframe(joined[['district','weighted_score','coverage_pct','lat','lon']],hide_index=True,use_container_width=True)
+   st.dataframe(joined[['district','weighted_score','coverage_pct','lat','lon']].rename(columns={'district':'地区名','weighted_score':'見守り優先度スコア','coverage_pct':'指標カバー率（%）','lat':'緯度','lon':'経度'}),hide_index=True,use_container_width=False,width=800)
   else:st.warning('地区名が一致する有効な座標がありません。')
 else:st.info('正確な代表点の座標データがまだないため、ピンを表示していません。CSVをアップロードすると地図が復旧します。')
 st.download_button('座標CSVテンプレートを取得',pd.DataFrame({'district':df.district,'lat':['']*len(df),'lon':['']*len(df)}).to_csv(index=False).encode('utf-8-sig'),'district_coordinates_template.csv','text/csv')
-st.subheader('地区一覧');st.dataframe(df[['district','weighted_score','coverage_pct','aging_rate_pct','bus_stops']].sort_values('weighted_score',ascending=False),hide_index=True,use_container_width=True)
+st.subheader('地区一覧');st.dataframe(df[['district','weighted_score','coverage_pct','aging_rate_pct','bus_stops']].sort_values('weighted_score',ascending=False).rename(columns={'district':'地区名','weighted_score':'見守り優先度スコア','coverage_pct':'指標カバー率（%）','aging_rate_pct':'高齢化率（%）','bus_stops':'バス停数'}),hide_index=True,use_container_width=False,width=850)
 score_caption()

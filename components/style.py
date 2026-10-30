@@ -53,6 +53,18 @@ def inject_global_css() -> None:
             border-radius: 10px;
             padding: 14px 16px;
         }}
+        /* Contrast and readability: do not use pale text on grey backgrounds. */
+        .stApp, .stMarkdown, [data-testid="stCaptionContainer"],
+        [data-testid="stWidgetLabel"], [data-testid="stMetricLabel"] {{
+            color: #243445 !important;
+        }}
+        [data-testid="stCaptionContainer"] p,
+        .stMarkdown p, [data-testid="stWidgetLabel"] p {{ color: #34465A !important; }}
+        [data-testid="stSidebar"] {{ background-color: #F1F4F8 !important; }}
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] a,
+        [data-testid="stSidebar"] label {{ color: #203650 !important; }}
+        [data-testid="stDataFrame"] {{ max-width: 100%; }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -92,7 +104,7 @@ def inject_no_transform_compact_css() -> None:
         }
 
         h1 {
-            font-size: 1.42rem !important;
+            font-size: 1.9rem !important;
             line-height: 1.35 !important;
             margin: 0 0 0.5rem 0 !important;
             overflow: visible !important;
@@ -100,7 +112,7 @@ def inject_no_transform_compact_css() -> None:
         }
 
         h2 {
-            font-size: 1.14rem !important;
+            font-size: 1.5rem !important;
             line-height: 1.35 !important;
             margin-top: 0.75rem !important;
             margin-bottom: 0.42rem !important;
@@ -108,7 +120,7 @@ def inject_no_transform_compact_css() -> None:
         }
 
         h3 {
-            font-size: 1.00rem !important;
+            font-size: 1.24rem !important;
             line-height: 1.35 !important;
             margin-top: 0.6rem !important;
             margin-bottom: 0.35rem !important;
@@ -127,14 +139,14 @@ def inject_no_transform_compact_css() -> None:
 
         /* 本文・キャプションの共通タイポグラフィ */
         .stMarkdown p {
-            font-size: 0.92rem !important;
+            font-size: 1.06rem !important;
             margin-top: 0.2rem !important;
             margin-bottom: 0.35rem !important;
             line-height: 1.5 !important;
         }
 
         .stCaption {
-            font-size: 0.82rem !important;
+            font-size: 0.96rem !important;
             margin-top: 0.2rem !important;
             margin-bottom: 0.35rem !important;
             line-height: 1.5 !important;
@@ -143,12 +155,12 @@ def inject_no_transform_compact_css() -> None:
         /* ボタン共通サイズ（少しコンパクトに） */
         div.stButton > button, div.stDownloadButton > button {
             padding: 0.42rem 0.9rem !important;
-            font-size: 0.88rem !important;
+            font-size: 1.0rem !important;
         }
 
         /* 入力欄（selectbox / text_input / number_input）のラベル文字 */
         [data-testid="stWidgetLabel"] p {
-            font-size: 0.86rem !important;
+            font-size: 0.98rem !important;
         }
 
         /* st.metric（設定・データ管理／地区詳細画面などで使用） */
@@ -158,7 +170,7 @@ def inject_no_transform_compact_css() -> None:
         }
 
         [data-testid="stMetricLabel"] p {
-            font-size: 0.76rem !important;
+            font-size: 0.91rem !important;
             line-height: 1.3 !important;
             white-space: normal !important;
             overflow: visible !important;
@@ -166,21 +178,21 @@ def inject_no_transform_compact_css() -> None:
         }
 
         [data-testid="stMetricValue"] {
-            font-size: 1.32rem !important;
+            font-size: 1.55rem !important;
             line-height: 1.3 !important;
             overflow: visible !important;
             text-overflow: clip !important;
         }
 
         [data-testid="stMetricDelta"] {
-            font-size: 0.72rem !important;
+            font-size: 1.02rem !important;
             line-height: 1.3 !important;
         }
 
         [data-testid="stDataFrame"] {
             margin-top: 0.25rem !important;
             margin-bottom: 0.3rem !important;
-            font-size: 0.9rem !important;
+            font-size: 1.02rem !important;
         }
 
         hr {
@@ -225,15 +237,15 @@ def inject_no_transform_compact_css() -> None:
         /* サイドバー全体のフォントサイズ（ナビゲーション・ブランド文言・
            入力欄ラベルなどをまとめてやや小さく） */
         [data-testid="stSidebar"] {
-            font-size: 0.86rem !important;
+            font-size: 0.98rem !important;
         }
         [data-testid="stSidebar"] h1 {
-            font-size: 1.15rem !important;
+            font-size: 1.28rem !important;
         }
         [data-testid="stSidebar"] p,
         [data-testid="stSidebar"] span,
         [data-testid="stSidebar"] label {
-            font-size: 0.86rem !important;
+            font-size: 0.98rem !important;
             line-height: 1.4 !important;
         }
 
@@ -257,20 +269,20 @@ def inject_no_transform_compact_css() -> None:
             min-height: 22px !important;
         }
         [data-testid="stSidebarNav"] a {
-            font-size: 0.8rem !important;
+            font-size: 0.98rem !important;
             line-height: 1.5rem !important;
             padding: 0 0.5rem !important;
             min-height: 22px !important;
         }
         [data-testid="stSidebarNav"] span {
-            font-size: 0.8rem !important;
+            font-size: 0.98rem !important;
         }
 
         /* --- サイドバー：ブランドタイトル「地域見守り意思決定支援システム」 ---
            st.markdown("### ...") で生成されるh3。サイドバー専用に少しだけ
            縮小し、行間を詰める（文字が潰れない範囲で調整）。 */
         [data-testid="stSidebar"] h3 {
-            font-size: 0.94rem !important;
+            font-size: 1.06rem !important;
             line-height: 1.35 !important;
             margin-top: 6px !important;
             margin-bottom: 4px !important;
@@ -285,7 +297,7 @@ def inject_no_transform_compact_css() -> None:
             margin-bottom: 0 !important;
         }
         [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
-            font-size: 0.78rem !important;
+            font-size: 1.06rem !important;
             line-height: 1.35 !important;
             margin: 2px 0 0 0 !important;
         }
@@ -305,7 +317,7 @@ def inject_no_transform_compact_css() -> None:
             margin-bottom: 4px !important;
         }
         [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
-            font-size: 0.8rem !important;
+            font-size: 0.98rem !important;
             margin-bottom: 2px !important;
         }
         [data-testid="stSidebar"] [data-testid="stSelectbox"] .react-aria-ComboBox {
@@ -388,7 +400,63 @@ def inject_no_transform_compact_css() -> None:
             margin-top: 3px;
             line-height: 1.4;
         }
-        </style>
+        /* Contrast and readability: do not use pale text on grey backgrounds. */
+        .stApp, .stMarkdown, [data-testid="stCaptionContainer"],
+        [data-testid="stWidgetLabel"], [data-testid="stMetricLabel"] {
+            color: #243445 !important;
+        }
+        [data-testid="stCaptionContainer"] p,
+        .stMarkdown p, [data-testid="stWidgetLabel"] p { color: #34465A !important; }
+        [data-testid="stSidebar"] { background-color: #F1F4F8 !important; }
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] a,
+        [data-testid="stSidebar"] label { color: #203650 !important; }
+        [data-testid="stDataFrame"] { max-width: 100%; }
+
+        /* v32.4 Lighthouse accessibility fixes: readable sidebar and controls. */
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+        [data-testid="stSidebar"] small {
+            color: #203650 !important;
+            opacity: 1 !important;
+            font-size: 1rem !important;
+            line-height: 1.55 !important;
+        }
+        [data-testid="stSidebarNav"] a {
+            min-height: 44px !important;
+            padding: 9px 12px !important;
+            display: flex !important;
+            align-items: center !important;
+            line-height: 1.45 !important;
+            color: #203650 !important;
+        }
+        [data-testid="stSidebarNav"] li { min-height: 44px !important; }
+        [data-testid="stSidebarNav"] a span { font-size: 1rem !important; }
+        [data-testid="stSidebar"] button,
+        [data-testid="stSidebar"] [role="combobox"],
+        [data-testid="stSidebar"] input,
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] .react-aria-ComboBox,
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] .react-aria-ComboBox > div,
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] .react-aria-ComboBox input,
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] .react-aria-ComboBox button {
+            min-height: 44px !important;
+            height: auto !important;
+            font-size: 1rem !important;
+        }
+        [data-testid="stSidebar"] a:focus-visible,
+        [data-testid="stSidebar"] button:focus-visible,
+        [data-testid="stSidebar"] input:focus-visible {
+            outline: 3px solid #1a73a8 !important;
+            outline-offset: 2px !important;
+        }
+        .dashboard-compact-panel-title { font-size: 1rem !important; }
+        .dashboard-compact-panel li,
+        .dashboard-source-label,
+        .dashboard-source-value { font-size: 0.95rem !important; }
+        .dashboard-source-label { color: #34465a !important; }
+        [data-testid="stCaptionContainer"] p { color: #34465a !important; }
+                </style>
         """,
         unsafe_allow_html=True,
     )

@@ -21,11 +21,14 @@ def open_district_from_chart(event, *, axis=None, custom=False):
         return
 
 st.title('39地区ダッシュボード')
+# Accessible defaults for all Plotly charts on this page.
+import plotly.io as pio
+
 a,b,c=st.columns(3)
 a.metric('地区数',len(df));b.metric('人口合計（資料記載時点）',f"{df.population.sum():,} 人");c.metric('人口加重の高齢化率',f"{(df.population*df.aging_rate_pct).sum()/df.population.sum():.1f}%")
 
 st.subheader('選択地区の人口構成・指標プロフィール')
-st.caption('過去版の地区レポートを参考に、円グラフとレーダーチャートを追加しました。')
+st.caption('選択した地区の人口構成と指標の特徴を確認できます。')
 profile_district = st.selectbox('グラフで見る地区', df['district'].dropna().astype(str).tolist(), key='dashboard_profile_district')
 profile = df.loc[df['district'] == profile_district].iloc[0]
 pie_col, radar_col = st.columns(2)
@@ -37,7 +40,7 @@ with pie_col:
         aged = population * aging / 100
         donut = px.pie(names=['65歳以上', '65歳未満'], values=[aged, population-aged], hole=0.48,
                        color_discrete_sequence=['#E8A33D', '#2C5C8F'])
-        donut.update_traces(textinfo='percent+label', hovertemplate='%{label}: %{percent}<extra></extra>')
+        donut.update_traces(textinfo='percent+label', hoverinfo='skip', hovertemplate=None)
         donut.update_layout(height=355, margin=dict(l=35,r=35,t=35,b=35), legend=dict(orientation='h', y=-0.07, x=0.5, xanchor='center'), uniformtext_minsize=11, uniformtext_mode='hide')
         st.plotly_chart(donut, use_container_width=True, key='dashboard_population_donut')
         st.caption('高齢化率と人口から計算した構成比です。人数は推計値のため表示していません。')
@@ -74,10 +77,10 @@ if not ranked.empty:
     fig.update_layout(height=490, margin=dict(l=8,r=18,t=8,b=20), showlegend=False)
     selection = st.plotly_chart(fig, use_container_width=True, on_select='rerun', selection_mode='points', key='dashboard_ranking_chart')
     open_district_from_chart(selection, axis='y')
-st.caption('棒をクリックすると、その地区の詳細ページに移動します。')
+st.caption('棒グラフをクリックすると、その地区の詳細ページに移動します。')
 
 st.subheader('市全体分析｜39地区の指標分布')
-st.caption('旧「市全体分析」をダッシュボードに統合しました。指標を切り替えて39地区の分布を確認できます。')
+st.caption('指標を切り替えて39地区の分布を確認できます。')
 indicator = st.selectbox('分布を見る指標', list(LABELS), format_func=lambda k: LABELS[k], key='dashboard_city_indicator')
 if indicator in df.columns:
     distribution = df[['district', indicator]].dropna().sort_values(indicator, ascending=False)
@@ -132,12 +135,12 @@ with st.expander('全39地区の見守り優先度スコアを見る'):
         open_district_from_chart(all_selection, axis='y')
 
 st.subheader('高齢化率の高い地区')
-st.dataframe(df.sort_values('aging_rate_pct',ascending=False)[['district','population','aging_rate_pct','care_certification_rate_pct','bus_stops','supermarkets_drugstores']].rename(columns={'district':'地区名',**LABELS}),hide_index=True,use_container_width=True)
+st.dataframe(df.sort_values('aging_rate_pct',ascending=False)[['district','population','aging_rate_pct','care_certification_rate_pct','bus_stops','supermarkets_drugstores']].rename(columns={'district':'地区名',**LABELS}),hide_index=True,use_container_width=False,width=1050)
 st.caption('高齢化率だけで支援優先度は確定できません。地区の面積・移動時間・サービス利用状況等は別途確認が必要です。')
 
 st.subheader('現在の重みに基づく見守り優先度スコア 上位10地区')
 score_caption()
-st.dataframe(df.sort_values('weighted_score',ascending=False)[['district','weighted_score','coverage_pct']].head(10).rename(columns={'district':'地区名','weighted_score':'見守り優先度スコア','coverage_pct':'指標カバー率（%）'}),hide_index=True,use_container_width=True)
+st.dataframe(df.sort_values('weighted_score',ascending=False)[['district','weighted_score','coverage_pct']].head(10).rename(columns={'district':'地区名','weighted_score':'見守り優先度スコア','coverage_pct':'指標カバー率（%）'}),hide_index=True,use_container_width=False,width=680)
 
 
 st.divider()
@@ -147,7 +150,7 @@ districts = df['district'].dropna().astype(str).tolist()
 chosen = st.selectbox('分析したい地区', districts, key='dashboard_drill_district')
 render_difference(df, chosen, 'dashboard_difference')
 comparison_candidates = [n for n in districts if n != chosen]
-peer = st.selectbox('比較相手（比較画面で使用）', comparison_candidates, key='dashboard_drill_peer')
+peer = st.selectbox('比較対象地区（比較画面で使用）', comparison_candidates, key='dashboard_drill_peer')
 a, b = st.columns(2)
 if a.button('📈 この地区を比較', use_container_width=True):
     st.session_state['drill_comparison_a'] = chosen

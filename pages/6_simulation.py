@@ -7,7 +7,7 @@ from utils.active_weights import get_weights, score_caption
 from utils.weighted_official import calculate, METRICS
 
 st.title('データシミュレーション')
-st.caption('指標の値を仮に変えた場合、見守り優先度スコアや順位がどう変化するかを試します。実際の施策効果を予測するものではありません。')
+st.caption('指標の将来想定値を入力し、見守り優先度スコアや順位がどのように変化するかを確認できます。将来値や施策効果を予測する機能ではありません。')
 original = load()
 weights = get_weights()
 baseline = calculate(weights, original)
@@ -22,7 +22,7 @@ if active:
 else:
     st.warning('現在の評価パターンで使用中の指標を確認してください。')
 selected_metrics = st.multiselect(
-    '仮に変更する指標（複数選択可）', editable,
+    'シミュレーション対象指標（複数選択可）', editable,
     default=[k for k in editable if k in active][:2] or editable[:2],
     format_func=lambda k: LABELS.get(k,k), key='simulation_selected_metrics')
 if not selected_metrics:
@@ -39,10 +39,10 @@ for metric in selected_metrics:
     is_pct = metric.endswith('_pct')
     label = LABELS.get(metric,metric)
     if is_pct:
-        proposed = st.number_input(f'{label}：変更後（%）', min_value=0.0, max_value=100.0,
+        proposed = st.number_input(f'想定{label}（%）', min_value=0.0, max_value=100.0,
                                    value=current, step=0.5, key=f'simulation_value_{district}_{metric}')
     else:
-        proposed = st.number_input(f'{label}：変更後（件・箇所）', min_value=0, max_value=100000,
+        proposed = st.number_input(f'想定{label}（件・箇所）', min_value=0, max_value=100000,
                                    value=int(current), step=1, key=f'simulation_value_{district}_{metric}')
     scenario.loc[scenario['district']==district,metric] = proposed
     changes.append({'指標':label,'変更前':current,'変更後':float(proposed),
@@ -70,7 +70,9 @@ fig = go.Figure()
 fig.add_bar(name='変更前',x=['見守り優先度スコア'],y=[old_score],marker_color='#2C5C8F')
 fig.add_bar(name='変更後',x=['見守り優先度スコア'],y=[new_score],marker_color='#E8A33D')
 fig.update_layout(barmode='group',yaxis=dict(range=[0,100],title='スコア（点）'),height=320,margin=dict(l=10,r=10,t=15,b=15))
-st.plotly_chart(fig,use_container_width=True)
+left_chart, _ = st.columns([2, 1])
+with left_chart:
+    st.plotly_chart(fig,use_container_width=True)
 st.caption('変更後は39地区全体で指標を再正規化し、同じ評価重みで再計算しています。そのため、対象地区以外の相対スコアや順位も変わる場合があります。')
 st.caption('この操作は画面上の仮定です。公式CSV・保存済みデータは変更されません。')
 score_caption()

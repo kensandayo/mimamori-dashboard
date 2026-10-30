@@ -1,0 +1,1 @@
+v32.7: Active weight transparency and synchronized pattern selection. Sidebar and weight editor display the exact applied metric weights and normalized proportions. The ranking calculation remains unchanged. District comparison and data simulation are temporarily hidden from sidebar navigation; source code is retained.

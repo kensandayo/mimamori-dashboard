@@ -38,13 +38,27 @@ def apply_weights(weights, name='カスタム'):
         raise ValueError('少なくとも1つの重みを0より大きくしてください。')
     st.session_state.weight_values = clean
     st.session_state.active_weight_pattern = name
+    # Recreate editor widgets on every application so their values always match
+    # the weights actually used by scored()/calculate().
     st.session_state['_weight_revision'] = st.session_state.get('_weight_revision', 0) + 1
+    st.session_state['_weight_applied_revision'] = st.session_state['_weight_revision']
 
 def apply_pattern(name):
     patterns, _ = available_patterns()
     if name not in patterns:
         raise ValueError('選択した評価パターンは現在の指標に対応していません。')
     apply_weights(patterns[name], name)
+
+def effective_weights_table():
+    """Exactly the same weight dictionary used by scored()/calculate()."""
+    import pandas as pd
+    weights = get_weights()
+    total = sum(float(v) for v in weights.values() if float(v) > 0)
+    return pd.DataFrame([
+        {'指標': label, '適用中の重み': float(weights.get(key, 0)),
+         '構成比（%）': round(float(weights.get(key, 0)) / total * 100, 1) if total else 0.0}
+        for key, (label, _) in METRICS.items()
+    ])
 
 def scored():
     return calculate(get_weights())
