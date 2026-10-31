@@ -44,7 +44,8 @@ page_defs = {
 nav = st.navigation(list(page_defs.values()), position='hidden')
 with st.sidebar:
     st.divider()
-    st.page_link(page_defs['dashboard'], label='🏠 ダッシュボード', use_container_width=True)
+    with st.container(key='dashboard_nav_featured'):
+        st.page_link(page_defs['dashboard'], label='🏠 ダッシュボード', use_container_width=True)
     with st.expander('📊 分析', expanded=True):
         for key in ('map', 'ranking', 'detail', 'survey', 'ai'):
             st.page_link(page_defs[key], use_container_width=True)

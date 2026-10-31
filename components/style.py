@@ -17,6 +17,31 @@ def inject_global_css() -> None:
     st.markdown(
         f"""
         <style>
+        /* Keep the dashboard visually prominent in the sidebar. */
+        section[data-testid="stSidebar"] .st-key-dashboard_nav_featured {{
+            margin: 0.45rem 0 0.65rem;
+            padding: 0.2rem;
+            border-radius: 10px;
+            background: #e0edf8;
+            border-left: 4px solid #236ca2;
+            border-top: 1px solid #b9d4e9;
+            border-right: 1px solid #b9d4e9;
+            border-bottom: 1px solid #b9d4e9;
+        }}
+        section[data-testid="stSidebar"] .st-key-dashboard_nav_featured a {{
+            font-size: 1.05rem !important;
+            font-weight: 750 !important;
+            color: #123d60 !important;
+            border-radius: 7px;
+            min-height: 2.7rem;
+        }}
+        section[data-testid="stSidebar"] .st-key-dashboard_nav_featured a:hover {{
+            background: #c5def1 !important;
+        }}
+        section[data-testid="stSidebar"] .st-key-dashboard_nav_featured a[aria-current="page"] {{
+            background: #236ca2 !important;
+            color: #ffffff !important;
+        }}
         .stApp {{ background-color: #f6f8fa; }}
         .block-container {{ padding-top: 2rem; padding-bottom: 3rem; max-width: 1200px; }}
 
